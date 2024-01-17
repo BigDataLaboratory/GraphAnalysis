@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import igraph
 import igraph as ig
 import leidenalg as la
 import pandas as pd
@@ -7,6 +7,8 @@ import sys
 from igraph import *
 import time
 import gc
+
+print("Ciao")
 
 # Nel caso si avesse il formato gml
 # data_graph = Graph.Read_GraphML("/Users/gba/Downloads/dataset_multigraph_2022_06_13.graphml")
@@ -31,6 +33,7 @@ Usage:  python LeidenClustering_gba.py /path/to/csv/graph/file.csv /path/to/outp
     print("Il numero di argomenti aggiuntivi passati allo script è sbagliato. Il numero di argomenti passato è "
           + str(num_arguments) + " e non 2")
     sys.exit(0)
+
 
 input_csv_graph_file_path = sys.argv[1]
 output_gml_file_path = sys.argv[2]
@@ -162,12 +165,13 @@ if data_type_needed:
 # betw = data_graph.community_edge_betweenness()
 # summary(betw)
 
-print("Calcolo del PageRank in corso...")
-start = time.time()
-data_graph.vs['pagerank'] = data_graph.pagerank(directed=True, weights='weight', niter=1000, eps=0.0001)
-end = time.time()
-print('PageRank completato!')
-print("Elapsed time: " + str(end - start))
+if False:
+    print("Calcolo del PageRank in corso...")
+    start = time.time()
+    data_graph.vs['pagerank'] = data_graph.pagerank(directed=True, weights='weight', niter=1000, eps=0.0001)
+    end = time.time()
+    print('PageRank completato!')
+    print("Elapsed time: " + str(end - start))
 
 print("Calcolo di Leiden con CPM Quality Function in corso...")
 start = time.time()
@@ -203,7 +207,7 @@ print("Elapsed time: " + str(end - start))
 print('Salvataggio del grafo in formato gml in corso...')
 start = time.time()
 # data_graph.save('./analysis/QCPS_2/2022-12-13/dataset_multigraph_with_node_type_2022_12_13.gml')
-#data_graph.save(output_gml_file_path)
+data_graph.save(output_gml_file_path)
 #data_graph.write_edgelist(output_gml_file_path)
 #print(data_graph.get_edge_dataframe())
 #data_graph.write(output_gml_file_path, format="graphml")
@@ -214,3 +218,41 @@ print("Elapsed time: " + str(end - start))
 # print(partition2)
 
 # ig.plot(partition2)
+
+def get_cluster_nodes(g, cluster_num, cluster_type="cluster3"):
+    """
+    Get all vertices belonging to an input cluster
+    :param g: graph
+    :param cluster_num: input cluster
+    :param cluster_type: cluster name
+    :return: all node belonging to the input cluster_num
+    """
+    cluster_nodes = []
+    for v in g.vs:
+        if v[cluster_type] == cluster_num:
+            cluster_nodes.append(v["name"])
+    return cluster_nodes
+
+def get_clusters_as_dataframe(g):
+    """
+    Get all vertices belonging to an input cluster
+    :param g: graph
+    :param cluster_num: input cluster
+    :param cluster_type: cluster name
+    :return: all node belonging to the input cluster_num
+    """
+    clusters_list = get_clusters_as_list(g)
+    clusters_df = pd.DataFrame(clusters_list)
+    print(clusters_df)
+    return clusters_df
+
+def get_clusters_as_list(g):
+    df_clusters = []
+    for v in g.vs:
+        #n = {'node': v['name'], 'cluster1': v['cluster'], 'cluster2': v['cluster2'], 'cluster3': v['cluster3'], 'pagerank': v['pagerank']}
+        n = {'node': v['name'], 'cluster1': v['cluster'], 'cluster2': v['cluster2'], 'cluster3': v['cluster3']}
+        df_clusters.append(n)
+    return df_clusters
+
+def write_clusters(clusters_df, path_file):
+    clusters_df.to_csv(path_file, sep="\t", header=True, index=False)
