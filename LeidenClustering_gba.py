@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import igraph
 import igraph as ig
 import leidenalg as la
 import pandas as pd
@@ -7,8 +6,6 @@ import sys
 from igraph import *
 import time
 import gc
-
-print("Ciao")
 
 # Nel caso si avesse il formato gml
 # data_graph = Graph.Read_GraphML("/Users/gba/Downloads/dataset_multigraph_2022_06_13.graphml")
@@ -40,17 +37,16 @@ output_gml_file_path = sys.argv[2]
 
 #indica se è necessario aggiungere il tipo di nodo all'interno del file di output
 #se non viene inserito, c'è un risparmio di memoria
-data_type_needed = False
+data_type_needed = True
+
 print("Caricamento grafo da csv in corso...")
 start = time.time()
-dataframe_graph = pd.read_csv(
-    # './analysis/QCPS_2/2022-12-13/2022-12-13_multigrafo_hashtag_retweet.csv',
-    input_csv_graph_file_path)
-#dataframe_graph = dataframe_graph[["hash_s", "hash_t", "frequency"]]
+dataframe_graph = pd.read_csv(input_csv_graph_file_path)
 end = time.time()
 print("Caricamento grafo completato!")
 print("Elapsed time: " + str(end - start))
 print(len(dataframe_graph.axes[1]))
+
 #Rinominare le variabili leiden necessita di questi nomi delle colonne
 dataframe_graph.columns = ['source', 'target', 'weight', 'type']
 type_dict = {}
@@ -77,23 +73,35 @@ if data_type_needed:
             if id_target in type_dict and type_dict[id_target] != "hashtag":
                 print(
                     "Abbiamo un problema... ID:" + str(id_target) + " è già presente ed era uno user, mentre ora è un hashtag")
-                sys.exit(-2)
+                #sys.exit(-2)
             type_dict[id_target] = "hashtag"
         elif type_data == "retweet":
             if id_target in type_dict and type_dict[id_target] != "user":
                 print(
                     "Abbiamo un problema... ID:" + str(id_target) + " è già presente ed era un hashtag, mentre ora è uno user")
-                sys.exit(-3)
+                #sys.exit(-3)
             type_dict[id_target] = "user"
-        elif type_data == "mentions":
+        elif type_data == "mention":
             if id_target in type_dict and type_dict[id_target] != "user":
                 print(
                     "Abbiamo un problema... ID:" + str(id_target) + " è già presente e non era uno user, mentre ora è uno user")
-                sys.exit(-4)
+                #sys.exit(-4)
             type_dict[id_target] = "user"
+        elif type_data == "reply":
+            if id_target in type_dict and type_dict[id_target] != "user":
+                print(
+                    "Abbiamo un problema... ID:" + str(id_target) + " è già presente e non era uno user, mentre ora è uno user")
+                #sys.exit(-5)
+            type_dict[id_target] = "user"
+        elif type_data == "cooccurrences":
+            if id_target in type_dict and type_dict[id_target] != "hashtag":
+                print(
+                    "Abbiamo un problema... ID:" + str(id_target) + " è già presente ed era uno user, mentre ora è un hashtag")
+                #sys.exit(-6)
+            type_dict[id_target] = "hashtag"
         else:
-            print("ERRORE: Il tipo di arco sembra non essere né hashtag né retweet né mentions")
-            sys.exit("ERRORE: Il tipo di arco sembra non essere né hashtag né retweet né mentions")
+            print("ERRORE: Il tipo di arco sembra non essere né hashtag né retweet né mentions nè reply nè cooccurrences")
+            sys.exit("ERRORE: Il tipo di arco sembra non essere né hashtag né retweet né mentions nè reply nè cooccurrences")
         count += 1
         if count % 100000 == 0:
             print("Eseguiti " + str(count) + " nodi sorgente su " + str(number_of_source_nodes) + " nodi totali")
@@ -101,6 +109,7 @@ if data_type_needed:
     print("Creazione dizionario nodo-tipo completato")
     print("Numero di nodi aggiunti: " + str(len(type_dict)))
     print("Elapsed time: " + str(end - start))
+
 print("Conversione degli hash in string in corso...")
 start = time.time()
 #trasformare in stringhe gli hash
@@ -121,7 +130,6 @@ print("Conversione del dataframe in tuple completata")
 print("Elapsed time: " + str(end - start))
 
 #libero la memoria
-#dataframe_graph = pd.DataFrame()
 print("Pulizia dell'oggetto dataframe_graph e garbage collector in corso...")
 del dataframe_graph
 gc.collect()
@@ -135,7 +143,6 @@ end = time.time()
 print('csv importato in formato iGraph!')
 print("Elapsed time: " + str(end - start))
 
-# print(data_graph.get_edgelist()[0:10])
 #libero la memoria
 del tuples
 gc.collect()
@@ -159,20 +166,6 @@ if data_type_needed:
     del type_dict
     gc.collect()
 
-# cluster0 = read.csv('/Users/gba/Google Drive/ACCOUNT_RUSSI/data/Analisi_2022-06-13/dataset_multigraph_gruppo0.csv', header=TRUE)
-# print(ig.__version__)
-
-# betw = data_graph.community_edge_betweenness()
-# summary(betw)
-
-if False:
-    print("Calcolo del PageRank in corso...")
-    start = time.time()
-    data_graph.vs['pagerank'] = data_graph.pagerank(directed=True, weights='weight', niter=1000, eps=0.0001)
-    end = time.time()
-    print('PageRank completato!')
-    print("Elapsed time: " + str(end - start))
-
 print("Calcolo di Leiden con CPM Quality Function in corso...")
 start = time.time()
 # Se non si specifica i weights allora Leiden considera il grafo non pesato
@@ -193,7 +186,6 @@ end = time.time()
 print('Calcolo di Leiden con Modularità completato!')
 print("Elapsed time: " + str(end - start))
 
-
 print("Calcolo di Leiden con CPM Quality Function e resolution parameter (0.4) in corso...")
 start = time.time()
 partition3 = la.find_partition(data_graph, la.CPMVertexPartition, resolution_parameter=0.4, weights='weight', seed=0)
@@ -203,23 +195,15 @@ end = time.time()
 print('Calcolo di Leiden con CPM Quality Function e resolution parameter (0.4) completato!')
 print("Elapsed time: " + str(end - start))
 
-#data_graph.save('/Users/gba/Google Drive/ACCOUNT_RUSSI/data/Analisi_2022-06-13/dataset_multigraph_gruppo0.csv')
-print('Salvataggio del grafo in formato gml in corso...')
+""" print('Salvataggio del grafo in formato gml in corso...')
 start = time.time()
-# data_graph.save('./analysis/QCPS_2/2022-12-13/dataset_multigraph_with_node_type_2022_12_13.gml')
 data_graph.save(output_gml_file_path)
-#data_graph.write_edgelist(output_gml_file_path)
-#print(data_graph.get_edge_dataframe())
-#data_graph.write(output_gml_file_path, format="graphml")
-
 end = time.time()
 print('Salvataggio del grafo in formato gml completato!')
-print("Elapsed time: " + str(end - start))
-# print(partition2)
+print("Elapsed time: " + str(end - start)) """
 
-# ig.plot(partition2)
 
-def get_cluster_nodes(g, cluster_num, cluster_type="cluster3"):
+def get_cluster_nodes(g, cluster_num, cluster_type):
     """
     Get all vertices belonging to an input cluster
     :param g: graph
@@ -250,9 +234,26 @@ def get_clusters_as_list(g):
     df_clusters = []
     for v in g.vs:
         #n = {'node': v['name'], 'cluster1': v['cluster'], 'cluster2': v['cluster2'], 'cluster3': v['cluster3'], 'pagerank': v['pagerank']}
-        n = {'node': v['name'], 'cluster1': v['cluster'], 'cluster2': v['cluster2'], 'cluster3': v['cluster3']}
+        n = {'node_hash': v['name'], 'cluster1': v['cluster'], 'cluster2': v['cluster2'], 'cluster3': v['cluster3'], 'type': v['type']}
         df_clusters.append(n)
     return df_clusters
 
 def write_clusters(clusters_df, path_file):
     clusters_df.to_csv(path_file, sep="\t", header=True, index=False)
+
+
+def hash_to_name(cluster_df):
+    user_map = pd.read_csv('./user_map.csv')
+    user_map['node_hash'] = user_map['node_hash'].astype(str)
+
+    hashtag_map = pd.read_csv('./hashtag_map.csv')
+    hashtag_map['node_hash'] = hashtag_map['node_hash'].astype(str)
+
+    user_df = user_map.merge(right=cluster_df, on='node_hash', how='inner').drop(columns=['node_hash', 'weight'])#.dropna()
+    print(user_df)
+
+    hashtag_df = hashtag_map.merge(right=cluster_df, on='node_hash', how='inner').drop(columns=['node_hash', 'weight'])#.dropna()
+    print(hashtag_df)
+
+
+hash_to_name(get_clusters_as_dataframe(data_graph))
