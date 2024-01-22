@@ -243,16 +243,18 @@ def write_clusters(clusters_df, path_file):
 
 
 def hash_to_name(cluster_df):
-    user_map = pd.read_csv('./user_map.csv')
+    user_map = pd.read_csv('../resources/user_map.csv')
+    user_map['type'] = 'user'
     user_map['node_hash'] = user_map['node_hash'].astype(str)
 
-    hashtag_map = pd.read_csv('./hashtag_map.csv')
+    hashtag_map = pd.read_csv('../resources/hashtag_map.csv')
+    hashtag_map['type'] = 'hashtag'
     hashtag_map['node_hash'] = hashtag_map['node_hash'].astype(str)
 
-    user_df = user_map.merge(right=cluster_df, on='node_hash', how='inner').drop(columns=['node_hash', 'weight'])#.dropna()
+    user_df = user_map.merge(right=cluster_df, on=['node_hash', 'type'], how='inner').drop(columns=['node_hash', 'weight'])#.dropna()
     print(user_df)
 
-    hashtag_df = hashtag_map.merge(right=cluster_df, on='node_hash', how='inner').drop(columns=['node_hash', 'weight'])#.dropna()
+    hashtag_df = hashtag_map.merge(right=cluster_df, on=['node_hash', 'type'], how='inner').drop(columns=['node_hash', 'weight'])#.dropna()
     print(hashtag_df)
 
 
