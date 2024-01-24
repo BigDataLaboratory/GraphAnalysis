@@ -1,4 +1,6 @@
 import logging
+import time
+
 import pandas as pd
 from algorithms.Utils import Utils
 
