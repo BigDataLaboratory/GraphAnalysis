@@ -1,9 +1,9 @@
 from itertools import combinations
+
 import mmh3
 
 
 class Utils:
-
 
     def hash(self, x):
         """
