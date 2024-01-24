@@ -1,23 +1,18 @@
+import logging
+import pandas as pd
+from algorithms.Utils import Utils
+
 class Map:
+    logger = logging.getLogger('Map')
 
-    def hash(self, x):
-        """
-        Compute the not signed hash of the input element
-        """
-        return mmh3.hash64(str(x), 0)[0]
+    def __init__(self, tweets):
+        self.tweets = tweets
 
-    def compute_hash(self, x):
-        """
-        Compute the not signed hash of the input element
-        """
-        if x is not None:
-            return mmh3.hash64(x, 0)[0]
-
-    def user_id_hashtable(self, tweets):
+    def user_id_hashtable(self):
         logging.info('Generating user hashtable')
         start = time.time()
-        id = tweets['user.id']
-        user_hash = pd.DataFrame({'user_id': id, 'hash': id.apply(self.hash)})
+        id = self.tweets['user.id']
+        user_hash = pd.DataFrame({'user_id': id, 'hash': id.apply(Utils.hash)})
 
         user_hash.dropna()
 
@@ -27,19 +22,19 @@ class Map:
         user_hash = user_hash.groupby(['user_id', 'hash'], as_index=False).size().rename(columns={'size': 'weight'})
 
         end = time.time()
-        logging.info('User hashtable generation execution time: %5.2fs' % (end - start))
+        self.logger.info('User hashtable generation execution time: %5.2fs' % (end - start))
 
         user_hash.to_csv('./user_hashtable.csv', index=False)
 
         return user_hash
 
-    def hashtag_hashtable(self, tweets):
-        logging.info('Generating hashtag hashtable')
+    def hashtag_hashtable(self):
+        self.logger.info('Generating hashtag hashtable')
         start = time.time()
-        hashtag = tweets['hashtagEntities'].apply(lambda x: x.lower().split('|') if isinstance(x, str) else [])
+        hashtag = self.tweets['hashtagEntities'].apply(lambda x: x.lower().split('|') if isinstance(x, str) else [])
 
         hashtag_exploded = hashtag.explode(ignore_index=True).dropna(ignore_index=True)
-        hashtag_hash = hashtag_exploded.apply(self.compute_hash)
+        hashtag_hash = hashtag_exploded.apply(Utils.compute_hash)
         hashtag_hash_df = pd.DataFrame({'hashtag': hashtag_exploded, 'node_hash': hashtag_hash})
 
         # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
@@ -49,17 +44,15 @@ class Map:
             columns={'size': 'weight'})
 
         end = time.time()
-        logging.info('Hashtag hashtable generation execution time: %5.2fs' % (end - start))
-
-        hashtag_hash_df.to_csv('./resources/hashtag_hashtable.csv')
+        self.logger.info('Hashtag hashtable generation execution time: %5.2fs' % (end - start))
 
         return hashtag_hash
 
-    def user_id_retweet_hashtable(self, tweets):
-        logging.info('Generating user_id_retweet hashtable')
+    def user_id_retweet_hashtable(self):
+        self.logger.info('Generating user_id_retweet hashtable')
         start = time.time()
-        id = tweets['retweeted_status.user.id']
-        retweet_user_hash = pd.DataFrame({'user_id_retweet': id, 'hash': id.apply(self.hash)})
+        id = self.tweets['retweeted_status.user.id']
+        retweet_user_hash = pd.DataFrame({'user_id_retweet': id, 'hash': id.apply(Utils.hash)})
 
         retweet_user_hash.dropna()
 
@@ -70,17 +63,15 @@ class Map:
             columns={'size': 'weight'})
 
         end = time.time()
-        logging.info('User_id_retweet hastable generation execution time: %5.2fs' % (end - start))
-
-        retweet_user_hash.to_csv('./user_id_retweet_hashtable.csv')
+        self.logger.info('User_id_retweet hastable generation execution time: %5.2fs' % (end - start))
 
         return retweet_user_hash
 
-    def user_screen_name_hashtable(self, tweets):
-        logging.info('Generating user_screen_name hashtable')
+    def user_screen_name_hashtable(self):
+        self.logger.info('Generating user_screen_name hashtable')
         start = time.time()
-        name = tweets['user.screen_name'].apply(lambda x: x.lower() if isinstance(x, str) else [])
-        user_screen_name_hash = pd.DataFrame({'user_screen_name': name, 'hash': name.apply(self.compute_hash)})
+        name = self.tweets['user.screen_name'].apply(lambda x: x.lower() if isinstance(x, str) else [])
+        user_screen_name_hash = pd.DataFrame({'user_screen_name': name, 'hash': name.apply(Utils.compute_hash)})
 
         user_screen_name_hash.dropna()
 
@@ -91,8 +82,6 @@ class Map:
                                                               as_index=False).size().rename(columns={'size': 'weight'})
 
         end = time.time()
-        logging.info('User_screen_name hastable generation execution time: %5.2fs' % (end - start))
-
-        user_screen_name_hash.to_csv('./user_screen_name_hashtable.csv')
+        self.logger.info('User_screen_name hastable generation execution time: %5.2fs' % (end - start))
 
         return user_screen_name_hash
