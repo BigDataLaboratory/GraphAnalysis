@@ -3,18 +3,20 @@
     "type": "mongo",
     "conf": {
       "connection.uri": "mongodb://localhost:27017/"
-    }
-  },
-  "output": {
+    },
     "path": "./resources/"
   },
-  "graph_file_name": {
-    "retweet": "retweet",
-    "retweet_user": "retweet_user",
-    "response": "response",
-    "response_user": "response_user",
-    "hashtag_cooccurrences": "hashtag_cooccurrences",
-    "multigraph": "multigraph"
-  },
-  "map_file_name_prefix": "map_"
+  "output": {
+    "path": "./resources/",
+    "graph_file_name": {
+      "retweet": "retweet",
+      "retweet_user": "retweet_user",
+      "response": "response",
+      "response_user": "response_user",
+      "hashtag_cooccurrences": "hashtag_cooccurrences",
+      "multigraph": "multigraph"
+    },
+    "map_file_name_prefix": "map_",
+    "clusters_file_name_prefix": "clusters_"
+  }
 }
