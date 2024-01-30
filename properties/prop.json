@@ -16,5 +16,6 @@
     "hashtag_cooccurrences": "hashtag_cooccurrences",
     "multigraph": "multigraph"
   },
-  "map_file_name_prefix": "map_"
+  "map_file_name_prefix": "map_",
+  "clusters_file_name_prefix": "clusters_"
 }
