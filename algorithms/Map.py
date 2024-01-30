@@ -40,7 +40,7 @@ class Map:
         hashtag = self.tweets['hashtagEntities'].apply(lambda x: x.lower().split('|') if isinstance(x, str) else [])
 
         hashtag_exploded = hashtag.explode(ignore_index=True).dropna().reset_index()
-        hashtag_hash = hashtag_exploded.apply(Utils.compute_hash)
+        hashtag_hash = hashtag_exploded.apply(lambda x: Utils.compute_hash(x))
         hashtag_hash_df = pd.DataFrame({'hashtag': hashtag_exploded, 'node_hash': hashtag_hash})
 
         # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
