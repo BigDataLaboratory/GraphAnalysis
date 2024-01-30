@@ -1,4 +1,3 @@
-from algorithms.Utils import Utils
 from algorithms.Multigraph import Multigraph
 from algorithms.Map import Map
 from algorithms.LeidenClustering import Leiden
