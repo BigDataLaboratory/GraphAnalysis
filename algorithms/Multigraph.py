@@ -4,8 +4,8 @@ import time
 
 from algorithms.Utils import Utils
 
-
 class Multigraph:
+
     logger = logging.getLogger('Multigraph')
 
     def __init__(self, tweets=None):
@@ -25,19 +25,20 @@ class Multigraph:
         result_df = pd.concat(df_list, ignore_index=True)
 
         end = time.time()
-        logging.info('Concatenation execution time: %5.2fs' % (end - start))
+        self.logger.info('Concatenation execution time: %5.2fs' % (end - start))
 
         return result_df
 
     def relationship_retweet(self):
-        logging.info('Generating retweet graph')
+
+        self.logger.info('Generating retweet graph')
         start = time.time()
         # DataFrame e_rt (retweet)
         e_rt_src = self.tweets['user.id']
         e_rt_dst = self.tweets['retweeted_status.user.id']
         e_rt = pd.DataFrame({'src': e_rt_src.apply(Utils.hash), 'dst': e_rt_dst.apply(Utils.hash)})
 
-        e_rt.dropna()
+        e_rt.dropna(ignore_index=True)
 
         # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
         # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
@@ -52,12 +53,13 @@ class Multigraph:
         return e_rt
 
     def relationship_hashtag(self):
+
         self.logger.info('Generating hashtag graph')
         start = time.time()
         # DataFrame e_ht (hashtag)
         e_ht_src = self.tweets['user.id']
         e_ht_dst = self.tweets['hashtagEntities'].apply(lambda x: x.lower().split('|') if isinstance(x, str) else [])
-        e_ht = pd.DataFrame({'src': e_ht_src, 'dst': e_ht_dst})
+        e_ht = pd.DataFrame({'src': e_ht_src.apply(Utils.hash), 'dst': e_ht_dst})
 
         # Rimozione NaN, altrimenti TypeError dato che vengono considerati come Float
         e_ht = e_ht.explode('dst').dropna(ignore_index=True)
@@ -77,16 +79,17 @@ class Multigraph:
         return e_ht
 
     def relationship_cooccurences(self):
+
         self.logger.info('Generating cooccurences graph')
         start = time.time()
         # DataFrame e_ht_ht (cooccurrences)
         ht_ht_src = self.tweets['user.id']
-        ht_ht_dst = self.tweets['hashtagEntities'].apply(
-            lambda x: Utils.combinations_list(x.lower().split('|')) if isinstance(x, str) else [])
-        e_ht_ht = pd.DataFrame({'src': ht_ht_src, 'dst': ht_ht_dst})
+        ht_ht_dst = self.tweets['hashtagEntities'].apply(lambda x: Utils.combinations_list(x.lower().split('|')) if isinstance(x, str) else [])
+        e_ht_ht = pd.DataFrame({'src': ht_ht_src.apply(Utils.hash), 'dst': ht_ht_dst})
 
         # Rimozione NaN, altrimenti TypeError dato che vengono considerati come Float
-        e_ht_ht = e_ht_ht.explode('dst').dropna()
+        e_ht_ht = e_ht_ht.explode('dst').dropna(ignore_index=True)
+        e_ht_ht = e_ht_ht.explode('dst')
 
         # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
         # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
@@ -141,12 +144,11 @@ class Multigraph:
         start = time.time()
         # DataFrame e_mt (mentions)
         e_mt_src = self.tweets['user.id']
-        e_mt_dst = self.tweets['userMentionEntities'].apply(
-            lambda x: x.lower().split('|') if isinstance(x, str) else [])
-        e_mt = pd.DataFrame({'src': e_mt_src, 'dst': e_mt_dst})
+        e_mt_dst = self.tweets['userMentionEntities'].apply(lambda x: x.lower().split('|') if isinstance(x, str) else [])
+        e_mt = pd.DataFrame({'src': e_mt_src.apply(Utils.hash), 'dst': e_mt_dst})
 
         # Rimozione NaN, altrimenti TypeError dato che vengono considerati come Float
-        e_mt = e_mt.explode('dst').dropna()
+        e_mt = e_mt.explode('dst').dropna(ignore_index=True)
 
         e_mt['dst'] = e_mt['dst'].apply(Utils.compute_hash)
 

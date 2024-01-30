@@ -1,12 +1,18 @@
-from algorithms.Map import Map
 from algorithms.Utils import Utils
 from algorithms.Multigraph import Multigraph
+from algorithms.Map import Map
+from algorithms.LeidenClustering import Leiden
 from pymongo import MongoClient
+from pathlib import Path
+from algorithms.Utils import Utils
 
 import pandas as pd
 import logging
+import os
 
-logging.basicConfig(filename='./Scrivania/logs.log',
+os.chdir(Path(__file__).parent)
+
+logging.basicConfig(filename='./logs/logs.log',
                     filemode='a',
                     format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
                     datefmt='%H:%M:%S',
@@ -28,9 +34,7 @@ def get_properties():
         properties = json.load(f)
     return properties
 
-
-if __name__ == 'main':
-
+if __name__ == '__main__':
     prop = get_properties()
 
     if prop["input"]["type"] == "mongo":

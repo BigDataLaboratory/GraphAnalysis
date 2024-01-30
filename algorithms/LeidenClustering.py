@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
 import igraph as ig
-from igraph import *
 import leidenalg as la
 import pandas as pd
 import sys
 import time
 import gc
+import logging
+
+from igraph import *
 
 class Leiden:
+
+    logger = logging.getLogger('Leiden')
 
     def csv_to_igraph(self, input_csv_graph_file_path):
 
@@ -15,15 +19,15 @@ class Leiden:
         #se non viene inserito, c'è un risparmio di memoria
         data_type_needed = True
 
-        print("Caricamento grafo da csv in corso...")
+        self.logger.info("Caricamento grafo da csv in corso...")
 
         start = time.time()
         dataframe_graph = pd.read_csv(input_csv_graph_file_path)
         end = time.time()
 
-        print("Caricamento grafo completato!")
-        print("Elapsed time: " + str(end - start))
-        print(len(dataframe_graph.axes[1]))
+        self.logger.info("Caricamento grafo completato!")
+        self.logger.info("Elapsed time: " + str(end - start))
+        self.logger.info(len(dataframe_graph.axes[1]))
 
         #Rinominare le variabili leiden necessita di questi nomi delle colonne
         dataframe_graph.columns = ['source', 'target', 'weight', 'type']
@@ -31,7 +35,7 @@ class Leiden:
 
         if data_type_needed:
 
-            print("Creazione dizionario nodo-tipo in corso...")
+            self.logger.info("Creazione dizionario nodo-tipo in corso...")
             start = time.time()
             count = 0
             number_of_source_nodes = len(dataframe_graph.index)
@@ -41,7 +45,7 @@ class Leiden:
                 id_source = row.source
 
                 if id_source in type_dict and type_dict[id_source] != "user":
-                    print("Abbiamo un problema... ID:" + str(id_source) + " è già presente ed era un hashtag, mentre ora è uno user")
+                    self.logger.info("Abbiamo un problema... ID:" + str(id_source) + " è già presente ed era un hashtag, mentre ora è uno user")
                     sys.exit(-1)
                 type_dict[id_source] = "user"
 
@@ -51,74 +55,74 @@ class Leiden:
 
                 if type_data == "hashtag":
                     if id_target in type_dict and type_dict[id_target] != "hashtag":
-                        print("Abbiamo un problema... ID:" + str(id_target) + " è già presente ed era uno user, mentre ora è un hashtag")
+                        self.logger.info("Abbiamo un problema... ID:" + str(id_target) + " è già presente ed era uno user, mentre ora è un hashtag")
                     type_dict[id_target] = "hashtag"
                 elif type_data == "retweet":
                     if id_target in type_dict and type_dict[id_target] != "user":
-                        print("Abbiamo un problema... ID:" + str(id_target) + " è già presente ed era un hashtag, mentre ora è uno user")
+                        self.logger.info("Abbiamo un problema... ID:" + str(id_target) + " è già presente ed era un hashtag, mentre ora è uno user")
                     type_dict[id_target] = "user"
                 elif type_data == "mention":
                     if id_target in type_dict and type_dict[id_target] != "user":
-                        print("Abbiamo un problema... ID:" + str(id_target) + " è già presente e non era uno user, mentre ora è uno user")
+                        self.logger.info("Abbiamo un problema... ID:" + str(id_target) + " è già presente e non era uno user, mentre ora è uno user")
                     type_dict[id_target] = "user"
                 elif type_data == "reply":
                     if id_target in type_dict and type_dict[id_target] != "user":
-                        print("Abbiamo un problema... ID:" + str(id_target) + " è già presente e non era uno user, mentre ora è uno user")
+                        self.logger.info("Abbiamo un problema... ID:" + str(id_target) + " è già presente e non era uno user, mentre ora è uno user")
                     type_dict[id_target] = "user"
                 elif type_data == "cooccurrences":
                     if id_target in type_dict and type_dict[id_target] != "hashtag":
-                        print("Abbiamo un problema... ID:" + str(id_target) + " è già presente ed era uno user, mentre ora è un hashtag")
+                        self.logger.info("Abbiamo un problema... ID:" + str(id_target) + " è già presente ed era uno user, mentre ora è un hashtag")
                     type_dict[id_target] = "hashtag"
                 else:
-                    print("ERRORE: Il tipo di arco sembra non essere né hashtag né retweet né mentions nè reply nè cooccurrences")
+                    self.logger.info("ERRORE: Il tipo di arco sembra non essere né hashtag né retweet né mentions nè reply nè cooccurrences")
                     sys.exit("ERRORE: Il tipo di arco sembra non essere né hashtag né retweet né mentions nè reply nè cooccurrences")
                 count += 1
                 if count % 100000 == 0:
-                    print("Eseguiti " + str(count) + " nodi sorgente su " + str(number_of_source_nodes) + " nodi totali")
+                    self.logger.info("Eseguiti " + str(count) + " nodi sorgente su " + str(number_of_source_nodes) + " nodi totali")
 
             end = time.time()
-            print("Creazione dizionario nodo-tipo completato")
-            print("Numero di nodi aggiunti: " + str(len(type_dict)))
-            print("Elapsed time: " + str(end - start))
+            self.logger.info("Creazione dizionario nodo-tipo completato")
+            self.logger.info("Numero di nodi aggiunti: " + str(len(type_dict)))
+            self.logger.info("Elapsed time: " + str(end - start))
 
-        print("Conversione degli hash in string in corso...")
+        self.logger.info("Conversione degli hash in string in corso...")
         start = time.time()
         #trasformare in stringhe gli hash
         dataframe_graph['source'] = dataframe_graph['source'].apply(str)
         dataframe_graph['target'] = dataframe_graph['target'].apply(str)
         end = time.time()
-        print("Conversione degli hash in string completata")
-        print("Elapsed time: " + str(end - start))
+        self.logger.info("Conversione degli hash in string completata")
+        self.logger.info("Elapsed time: " + str(end - start))
 
-        print(dataframe_graph.head())
+        self.logger.info(dataframe_graph.head())
 
-        print("Conversione del dataframe in tuple in corso...")
+        self.logger.info("Conversione del dataframe in tuple in corso...")
         start = time.time()
         tuples = [tuple(x) for x in dataframe_graph.values]
         end = time.time()
-        print("Conversione del dataframe in tuple completata")
-        print("Elapsed time: " + str(end - start))
+        self.logger.info("Conversione del dataframe in tuple completata")
+        self.logger.info("Elapsed time: " + str(end - start))
 
         #libero la memoria
-        print("Pulizia dell'oggetto dataframe_graph e garbage collector in corso...")
+        self.logger.info("Pulizia dell'oggetto dataframe_graph e garbage collector in corso...")
         del dataframe_graph
         gc.collect()
-        print("Pulizia dell'oggetto dataframe_graph e garbage collector completata!")
+        self.logger.info("Pulizia dell'oggetto dataframe_graph e garbage collector completata!")
 
-        print("Import del grafo in formato iGraph in corso...")
+        self.logger.info("Import del grafo in formato iGraph in corso...")
         start = time.time()
         #da csv a gml, weight e type attributi degli edge
         data_graph = ig.Graph.TupleList(tuples, directed=True, edge_attrs=['weight', 'type'])
         end = time.time()
-        print('csv importato in formato iGraph!')
-        print("Elapsed time: " + str(end - start))
+        self.logger.info('csv importato in formato iGraph!')
+        self.logger.info("Elapsed time: " + str(end - start))
 
         #libero la memoria
         del tuples
         gc.collect()
 
         if data_type_needed:
-            print("Aggiunta del tipo di dato ai nodi in corso...")
+            self.logger.info("Aggiunta del tipo di dato ai nodi in corso...")
             start = time.time()
             count = 0
             num_nodes_graph = data_graph.vcount()
@@ -128,10 +132,10 @@ class Leiden:
                 data_graph.vs[id_graph_node]["type"] = type_node
                 count += 1
                 if count % 10000 == 0:
-                    print("Aggiunto il tipo dei nodi a " + str(count) + " nodi su " + str(num_nodes_graph) + " nodi totali")
+                    self.logger.info("Aggiunto il tipo dei nodi a " + str(count) + " nodi su " + str(num_nodes_graph) + " nodi totali")
             end = time.time()
-            print('Tipo dei nodi aggiunto!')
-            print("Elapsed time: " + str(end - start))
+            self.logger.info('Tipo dei nodi aggiunto!')
+            self.logger.info("Elapsed time: " + str(end - start))
             #libero la memoria
             del type_dict
             gc.collect()
@@ -140,7 +144,7 @@ class Leiden:
 
     def add_leiden_to_igraph(self, data_graph):
 
-        print("Calcolo di Leiden con CPM Quality Function in corso...")
+        self.logger.info("Calcolo di Leiden con CPM Quality Function in corso...")
         start = time.time()
         # Se non si specifica i weights allora Leiden considera il grafo non pesato
         partition = la.find_partition(data_graph, la.CPMVertexPartition, weights='weight', seed=0)
@@ -148,36 +152,26 @@ class Leiden:
         data_graph.vs['cluster'] = partition.membership
         summary(partition)
         end = time.time()
-        print('Calcolo di Leiden con CPM Quality Function completato!')
-        print("Elapsed time: " + str(end - start))
+        self.logger.info('Calcolo di Leiden con CPM Quality Function completato!')
+        self.logger.info("Elapsed time: " + str(end - start))
 
-        print("Calcolo di Leiden con Modularità in corso...")
+        self.logger.info("Calcolo di Leiden con Modularità in corso...")
         start = time.time()
         partition2 = la.find_partition(data_graph, la.ModularityVertexPartition, weights='weight', seed=0)
         data_graph.vs['cluster2'] = partition2.membership
         summary(partition2)
         end = time.time()
-        print('Calcolo di Leiden con Modularità completato!')
-        print("Elapsed time: " + str(end - start))
+        self.logger.info('Calcolo di Leiden con Modularità completato!')
+        self.logger.info("Elapsed time: " + str(end - start))
 
-        print("Calcolo di Leiden con CPM Quality Function e resolution parameter (0.4) in corso...")
+        self.logger.info("Calcolo di Leiden con CPM Quality Function e resolution parameter (0.4) in corso...")
         start = time.time()
         partition3 = la.find_partition(data_graph, la.CPMVertexPartition, resolution_parameter=0.4, weights='weight', seed=0)
         data_graph.vs['cluster3'] = partition3.membership
         summary(partition3)
         end = time.time()
-        print('Calcolo di Leiden con CPM Quality Function e resolution parameter (0.4) completato!')
-        print("Elapsed time: " + str(end - start))
-    
-    def igraph_to_file(self, data_graph, output_file_path='../resources/output_graph', ext='gml'):
-
-        print('Salvataggio del grafo in formato gml in corso...')
-        start = time.time()
-        data_graph.save(output_file_path + '.' + ext)
-        end = time.time()
-        print('Salvataggio del grafo in formato gml completato!')
-        print("Elapsed time: " + str(end - start))
-
+        self.logger.info('Calcolo di Leiden con CPM Quality Function e resolution parameter (0.4) completato!')
+        self.logger.info("Elapsed time: " + str(end - start))
 
     def get_cluster_nodes(self, g, cluster_num, cluster_type):
         """
@@ -213,22 +207,26 @@ class Leiden:
         clusters_df = pd.DataFrame(clusters_list)
 
         return clusters_df
-    
-    def write_clusters(self, clusters_df, path_file):
-        clusters_df.to_csv(path_file, sep="\t", header=True, index=False)
 
-    def hash_to_name(self, cluster_df):
+    def hash_to_name(self, cluster_df, user_map_path_file, hashtag_map_path_file, screen_name_user_id_map_path_file):
 
-        user_map = pd.read_csv('./user_map.csv')
+        user_map = pd.read_csv(user_map_path_file)
         user_map['type'] = 'user'
         user_map['node_hash'] = user_map['node_hash'].astype(str)
 
-        hashtag_map = pd.read_csv('./hashtag_map.csv')
+        screen_name_user_id_map = pd.read_csv(screen_name_user_id_map_path_file)
+        screen_name_user_id_map['type'] = 'user'
+
+        hashtag_map = pd.read_csv(hashtag_map_path_file)
         hashtag_map['type'] = 'hashtag'
         hashtag_map['node_hash'] = hashtag_map['node_hash'].astype(str)
 
-        user_df = user_map.merge(right=cluster_df, on=['node_hash', 'type'], how='inner').drop(columns=['node_hash', 'weight'])
-        user_df.to_csv('./user_clusters.csv', index=False)
+        user_df = user_map.merge(right=cluster_df, on=['node_hash', 'type'], 
+                                 how='inner').drop(columns=['node_hash', 'weight'])
+        user_df = screen_name_user_id_map.merge(right=user_df, on=['user_id', 'type'], 
+                                 how='inner').drop(columns=['user_id', 'type', 'weight'])
 
-        hashtag_df = hashtag_map.merge(right=cluster_df, on=['node_hash', 'type'], how='inner').drop(columns=['node_hash', 'weight'])
-        user_df.to_csv('./hashtag_clusters.csv', index=False)
+        hashtag_df = hashtag_map.merge(right=cluster_df, on=['node_hash', 'type'], 
+                                how='inner').drop(columns=['node_hash', 'weight', 'type'])
+
+        return [user_df, hashtag_df]

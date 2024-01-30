@@ -1,24 +1,24 @@
 from itertools import combinations
+from igraph import *
 
 import mmh3
 
-
 class Utils:
 
-    def hash(self, x):
+    def hash(x):
         """
         Compute the not signed hash of the input element
         """
         return mmh3.hash64(str(x), 0)[0]
 
-    def compute_hash(self, x):
+    def compute_hash(x):
         """
         Compute the not signed hash of the input element
         """
         if x is not None:
             return mmh3.hash64(x, 0)[0]
 
-    def combinations_list(self, x):
+    def combinations_list(x):
         """
         Create all the possible combinations within hashtag in the same tweet, using their hashes
         """
@@ -29,6 +29,8 @@ class Utils:
             hashed.sort()
             return list(combinations(hashed, 2))
 
-    def persist_to_file(self, df, file_path='./graph.csv', format="csv"):
+    def persist_to_file(obj, file_path='./graph.csv', format="csv"):
         if format == "csv":
-            df.to_csv(file_path + ".csv", index=False)
+            obj.to_csv(file_path + ".csv", index=False)
+        elif format == "gml":
+            obj.save(file_path + ".gml")
