@@ -45,7 +45,7 @@ if __name__ == '__main__':
         pass
 
     # Estrazione dei dati da MongoDB
-    cursor = collection.find()  # .limit(250)
+    cursor = collection.find().limit(250)
 
     # Dataframe normalizzato
     tweets_norm = pd.json_normalize(cursor)
