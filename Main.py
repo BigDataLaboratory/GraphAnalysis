@@ -38,7 +38,7 @@ if __name__ == 'main':
         # Connessione a MongoDB
         mongo = MongoClient(mongo_config["connection.uri"])
         db = mongo.twitter
-        collection = db.dati
+        collection = db.QCPS_streaming_2
     else:
         pass
 
@@ -59,14 +59,14 @@ if __name__ == 'main':
     mention = multigraph_instance.relationship_mentions()
 
     # Creazione delle map
-    # user_map = map_instance.user_id_hashtable(tweets_norm)
-    # Utils.persist_to_file(user_map, prop["output"]["path"]+prop["output"]["map_file_name_prefix"]+"user")
-    # hashtag_map = map_instance.hashtag_hashtable(tweets_norm)
-    # Utils.persist_to_file(hashtag_map, prop["output"]["path"]+prop["output"]["map_file_name_prefix"]+"hashtag_hash")
-    # retweet_user_map = map_instance.user_id_retweet_hashtable(tweets_norm)
-    # Utils.persist_to_file(retweet_user_map, prop["output"]["path"]+prop["output"]["map_file_name_prefix"]+"user_id_retweet")
-    # user_screen_name_map = map_instance.user_screen_name_hashtable(tweets_norm)
-    # Utils.persist_to_file(user_screen_name_map, prop["output"]["path"]+prop["output"]["map_file_name_prefix"]+"user_screen_name")
+    user_map = map_instance.user_id_hashtable(tweets_norm)
+    Utils.persist_to_file(user_map, prop["output"]["path"]+prop["output"]["map_file_name_prefix"]+"user")
+    hashtag_map = map_instance.hashtag_hashtable(tweets_norm)
+    Utils.persist_to_file(hashtag_map, prop["output"]["path"]+prop["output"]["map_file_name_prefix"]+"hashtag_hash")
+    retweet_user_map = map_instance.user_id_retweet_hashtable(tweets_norm)
+    Utils.persist_to_file(retweet_user_map, prop["output"]["path"]+prop["output"]["map_file_name_prefix"]+"user_id_retweet")
+    user_screen_name_map = map_instance.user_screen_name_hashtable(tweets_norm)
+    Utils.persist_to_file(user_screen_name_map, prop["output"]["path"]+prop["output"]["map_file_name_prefix"]+"user_screen_name")
 
     result = multigraph_instance.gen_multigraph([retweet, hashtag, cooccurrences, reply, mention])
     Utils.persist_to_file(result, prop["output"]["path"]+prop["graph_file_name"]["multigraph"])

@@ -2,7 +2,7 @@
   "input": {
     "type": "mongo",
     "conf": {
-      "connection.uri": "mongodb://localhost:27017/"
+      "connection.uri": "mongodb://127.0.0.1:27018/"
     }
   },
   "output": {
