@@ -5,17 +5,24 @@
       "connection.uri": "mongodb://127.0.0.1:27018/"
     }
   },
+  "graph_type": {
+    "retweet": true,
+    "user_hashtag": true,
+    "response": true,
+    "mention": true,
+    "hashtag_cooccurrences": true
+  },
   "output": {
-    "path": "./resources/"
-  },
-  "graph_file_name": {
-    "retweet": "retweet",
-    "retweet_user": "retweet_user",
-    "response": "response",
-    "response_user": "response_user",
-    "hashtag_cooccurrences": "hashtag_cooccurrences",
-    "multigraph": "multigraph"
-  },
-  "map_file_name_prefix": "map_",
-  "clusters_file_name_prefix": "clusters_"
+    "path": "./resources/",
+    "graph_file_name": {
+      "retweet": "retweet",
+      "retweet_user": "retweet_user",
+      "response": "response",
+      "response_user": "response_user",
+      "hashtag_cooccurrences": "hashtag_cooccurrences",
+      "multigraph": "multigraph"
+    },
+    "map_file_name_prefix": "map_",
+    "clusters_file_name_prefix": "clusters_"
+  }
 }

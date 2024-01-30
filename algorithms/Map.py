@@ -19,7 +19,7 @@ class Map:
         id = self.tweets['user.id']
         user_hash = pd.DataFrame({'user_id': id, 'node_hash': id.apply(Utils.hash)})
 
-        user_hash.dropna(ignore_index=True)
+        user_hash.dropna().reset_index()
 
         # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
         # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
@@ -39,7 +39,7 @@ class Map:
 
         hashtag = self.tweets['hashtagEntities'].apply(lambda x: x.lower().split('|') if isinstance(x, str) else [])
 
-        hashtag_exploded = hashtag.explode(ignore_index=True).dropna(ignore_index=True)
+        hashtag_exploded = hashtag.explode(ignore_index=True).dropna().reset_index()
         hashtag_hash = hashtag_exploded.apply(Utils.compute_hash)
         hashtag_hash_df = pd.DataFrame({'hashtag': hashtag_exploded, 'node_hash': hashtag_hash})
 
@@ -52,7 +52,7 @@ class Map:
         end = time.time()
         self.logger.info('Hashtag hashtable generation execution time: %5.2fs' % (end - start))
 
-        return hashtag_hash
+        return hashtag_hash_df
 
     def user_id_retweet_hashtable(self):
 
@@ -62,7 +62,7 @@ class Map:
         id = self.tweets['retweeted_status.user.id']
         retweet_user_hash = pd.DataFrame({'user_id_retweet': id, 'node_hash': id.apply(Utils.hash)})
 
-        retweet_user_hash.dropna(ignore_index=True)
+        retweet_user_hash.dropna().reset_index()
 
         # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
         # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
@@ -83,7 +83,7 @@ class Map:
         name = self.tweets['user.screen_name'].apply(lambda x: x.lower() if isinstance(x, str) else [])
         user_screen_name_hash = pd.DataFrame({'user_screen_name': name, 'node_hash': name.apply(Utils.compute_hash)})
 
-        user_screen_name_hash.dropna(ignore_index=True)
+        user_screen_name_hash.dropna().reset_index()
 
         # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
         # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
@@ -105,7 +105,7 @@ class Map:
         id = self.tweets['user.id']
         user_screen_name_user_id = pd.DataFrame({'user_screen_name': name, 'user_id': id})
 
-        user_screen_name_user_id.dropna(ignore_index=True)
+        user_screen_name_user_id.dropna().reset_index()
 
         # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
         # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo

@@ -38,7 +38,7 @@ class Multigraph:
         e_rt_dst = self.tweets['retweeted_status.user.id']
         e_rt = pd.DataFrame({'src': e_rt_src.apply(Utils.hash), 'dst': e_rt_dst.apply(Utils.hash)})
 
-        e_rt.dropna(ignore_index=True)
+        e_rt.dropna().reset_index()
 
         # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
         # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
@@ -62,7 +62,7 @@ class Multigraph:
         e_ht = pd.DataFrame({'src': e_ht_src.apply(Utils.hash), 'dst': e_ht_dst})
 
         # Rimozione NaN, altrimenti TypeError dato che vengono considerati come Float
-        e_ht = e_ht.explode('dst').dropna(ignore_index=True)
+        e_ht = e_ht.explode('dst').dropna().reset_index()
 
         e_ht['dst'] = e_ht['dst'].apply(Utils.compute_hash)
 
@@ -88,7 +88,7 @@ class Multigraph:
         e_ht_ht = pd.DataFrame({'src': ht_ht_src.apply(Utils.hash), 'dst': ht_ht_dst})
 
         # Rimozione NaN, altrimenti TypeError dato che vengono considerati come Float
-        e_ht_ht = e_ht_ht.explode('dst').dropna(ignore_index=True)
+        e_ht_ht = e_ht_ht.explode('dst').dropna().reset_index()
         e_ht_ht = e_ht_ht.explode('dst')
 
         # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
@@ -148,7 +148,7 @@ class Multigraph:
         e_mt = pd.DataFrame({'src': e_mt_src.apply(Utils.hash), 'dst': e_mt_dst})
 
         # Rimozione NaN, altrimenti TypeError dato che vengono considerati come Float
-        e_mt = e_mt.explode('dst').dropna(ignore_index=True)
+        e_mt = e_mt.explode('dst').dropna().reset_index()
 
         e_mt['dst'] = e_mt['dst'].apply(Utils.compute_hash)
 

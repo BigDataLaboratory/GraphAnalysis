@@ -1,6 +1,5 @@
 from algorithms.Multigraph import Multigraph
 from algorithms.Map import Map
-from algorithms.LeidenClustering import Leiden
 from pymongo import MongoClient
 from pathlib import Path
 from algorithms.Utils import Utils
@@ -62,14 +61,26 @@ if __name__ == '__main__':
     mention = multigraph_instance.relationship_mentions()
 
     # Creazione delle map
-    user_map = map_instance.user_id_hashtable(tweets_norm)
+    user_map = map_instance.user_id_hashtable()
     Utils.persist_to_file(user_map, prop["output"]["path"]+prop["output"]["map_file_name_prefix"]+"user")
-    hashtag_map = map_instance.hashtag_hashtable(tweets_norm)
+    hashtag_map = map_instance.hashtag_hashtable()
     Utils.persist_to_file(hashtag_map, prop["output"]["path"]+prop["output"]["map_file_name_prefix"]+"hashtag_hash")
-    retweet_user_map = map_instance.user_id_retweet_hashtable(tweets_norm)
+    retweet_user_map = map_instance.user_id_retweet_hashtable()
     Utils.persist_to_file(retweet_user_map, prop["output"]["path"]+prop["output"]["map_file_name_prefix"]+"user_id_retweet")
-    user_screen_name_map = map_instance.user_screen_name_hashtable(tweets_norm)
+    user_screen_name_map = map_instance.user_screen_name_hashtable()
     Utils.persist_to_file(user_screen_name_map, prop["output"]["path"]+prop["output"]["map_file_name_prefix"]+"user_screen_name")
 
-    result = multigraph_instance.gen_multigraph([retweet, hashtag, cooccurrences, reply, mention])
+    graph_list = []
+    if prop["graph_type"]["retweet"]:
+        graph_list.append(retweet)
+    if prop["graph_type"]["response"]:
+        graph_list.append(reply)
+    if prop["graph_type"]["user_hashtag"]:
+        graph_list.append(hashtag)
+    if prop["graph_type"]["mention"]:
+        graph_list.append(mention)
+    if prop["graph_type"]["hashtag_cooccurrences"]:
+        graph_list.append(cooccurrences)
+
+    result = multigraph_instance.gen_multigraph(graph_list)
     Utils.persist_to_file(result, prop["output"]["path"]+prop["graph_file_name"]["multigraph"])
