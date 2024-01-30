@@ -83,4 +83,4 @@ if __name__ == '__main__':
         graph_list.append(cooccurrences)
 
     result = multigraph_instance.gen_multigraph(graph_list)
-    Utils.persist_to_file(result, prop["output"]["path"]+prop["graph_file_name"]["multigraph"])
+    Utils.persist_to_file(result, prop["output"]["path"]+prop["output"]["graph_file_name"]["multigraph"])

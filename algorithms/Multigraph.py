@@ -38,7 +38,8 @@ class Multigraph:
         e_rt_dst = self.tweets['retweeted_status.user.id']
         e_rt = pd.DataFrame({'src': e_rt_src.apply(Utils.hash), 'dst': e_rt_dst.apply(Utils.hash)})
 
-        e_rt.dropna().reset_index()
+        e_rt.dropna(inplace=True)
+        e_rt.reset_index(inplace=True)
 
         # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
         # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
