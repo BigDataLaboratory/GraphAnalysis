@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import igraph as ig
 import leidenalg as la
-import pandas as pd
+import modin.pandas as pd
 import sys
 import time
 import gc
