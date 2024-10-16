@@ -5,21 +5,22 @@ import pymongo.errors
 from pymongo import MongoClient
 
 from Utils.Const import Const as c
+from typing import Any, Optional
 
 
 class RawData:
 
-    def __init__(self, uri, username=None, password=None, authSource=None, authMechanism=None, db=None, collection=None, type="mongo"):
+    def __init__(self, uri: str, username: str = None, password: str = None, auth_source: str = None, auth_mechanism: str = None, db: str = None, collection: str = None, input_type: str = "mongo"):
         self.uri = uri
         self.username = username
         self.password = password
-        self.auth_source = authSource
-        self.auth_mechanism = authMechanism
+        self.auth_source = auth_source
+        self.auth_mechanism = auth_mechanism
         self.db = db
         self.collection = collection
-        self.type = type
+        self.type = input_type
 
-    def connect(self, database_name=None, collection=None):
+    def connect(self, database_name: str = None, collection: str = None):
         if self.db is None and database_name is not None and self.type == c.MONGO:
             mongo_client = MongoClient(self.uri,
                                        username=self.username,
@@ -36,11 +37,11 @@ class RawData:
     def get_collection(self):
         return self.collection
 
-    def set_collection(self, collection):
-        if collection != self.collection.name:
-            self.collection = self.db[collection]
+    def set_collection(self, collection_name: str):
+        if collection_name != self.collection:
+            self.collection = self.db[collection_name]
 
-    def query(self, where=None, project=None, batch_size=100):
+    def query(self, where: str = None, project: str = None, batch_size: int = 100):
         if self.type == c.MONGO:
             result = self.collection.find(where, project, batch_size=batch_size)
             return pd.json_normalize(result)
