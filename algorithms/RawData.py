@@ -41,7 +41,7 @@ class RawData:
         if collection_name != self.collection:
             self.collection = self.db[collection_name]
 
-    def query(self, where: str = None, project: str = None, batch_size: int = 100):
+    def query(self, where: str = None, project: list = None, batch_size: int = 100):
         if self.type == c.MONGO:
             result = self.collection.find(where, project, batch_size=batch_size)
             return pd.json_normalize(result)

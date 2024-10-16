@@ -26,7 +26,7 @@ logging.basicConfig(filename='./logs/logs.log',
 class GraphAnalysis:
     logger = logging.getLogger('GraphAnalysis')
 
-    def __init__(self, parameters):
+    def __init__(self, parameters: namedtuple):
         self.parameters = parameters
 
     def run(self):
@@ -206,7 +206,7 @@ def get_properties():
 
 if __name__ == '__main__':
 
-    prop = get_properties()
+    prop: dict = get_properties()
     do_graph_generation = prop["graph_generation"]["to_execute"]
     do_community_detection = prop["community_detection"]["to_execute"]
     do_get_text = prop["get_users_text"]["to_execute"]

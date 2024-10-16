@@ -4,15 +4,14 @@ import time
 
 from Utils.Utils import Utils
 
-class Map:
 
+class Map:
     logger = logging.getLogger('Map')
 
-    def __init__(self, tweets):
+    def __init__(self, tweets: dict):
         self.tweets = tweets
 
     def user_id_hashtable(self):
-
         self.logger.info('Generating user hashtable')
         start = time.time()
 
@@ -25,7 +24,7 @@ class Map:
         # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
         # una colonna 'size' e restituendo effettivamente un dataframe.
         user_hash = user_hash.groupby(['original',
-                                        'node_hash'], as_index=False).size().rename(columns={'size': 'weight'})
+                                       'node_hash'], as_index=False).size().rename(columns={'size': 'weight'})
 
         end = time.time()
         self.logger.info('User hashtable generation execution time: %5.2fs' % (end - start))
@@ -33,7 +32,6 @@ class Map:
         return user_hash
 
     def hashtag_hashtable(self):
-
         self.logger.info('Generating hashtag hashtable')
         start = time.time()
 
@@ -47,7 +45,8 @@ class Map:
         # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
         # una colonna 'size' e restituendo effettivamente un dataframe.
         hashtag_hash_df = hashtag_hash_df.groupby(['original',
-                                            'node_hash'], as_index=False).size().rename(columns={'size': 'weight'})
+                                                   'node_hash'], as_index=False).size().rename(
+            columns={'size': 'weight'})
 
         end = time.time()
         self.logger.info('Hashtag hashtable generation execution time: %5.2fs' % (end - start))
@@ -55,7 +54,6 @@ class Map:
         return hashtag_hash_df
 
     def user_id_retweet_hashtable(self):
-
         self.logger.info('Generating user_id_retweet hashtable')
         start = time.time()
 
@@ -68,7 +66,8 @@ class Map:
         # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
         # una colonna 'size' e restituendo effettivamente un dataframe.
         retweet_user_hash = retweet_user_hash.groupby(['original',
-                                            'node_hash'], as_index=False).size().rename(columns={'size': 'weight'})
+                                                       'node_hash'], as_index=False).size().rename(
+            columns={'size': 'weight'})
 
         end = time.time()
         self.logger.info('User_id_retweet hastable generation execution time: %5.2fs' % (end - start))
@@ -76,7 +75,6 @@ class Map:
         return retweet_user_hash
 
     def user_screen_name_hashtable(self):
-
         self.logger.info('Generating user_screen_name hashtable')
         start = time.time()
 
@@ -89,15 +87,15 @@ class Map:
         # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
         # una colonna 'size' e restituendo effettivamente un dataframe.
         user_screen_name_hash = user_screen_name_hash.groupby(['original',
-                                            'node_hash'], as_index=False).size().rename(columns={'size': 'weight'})
+                                                               'node_hash'], as_index=False).size().rename(
+            columns={'size': 'weight'})
 
         end = time.time()
         self.logger.info('User_screen_name hastable generation execution time: %5.2fs' % (end - start))
 
         return user_screen_name_hash
-    
-    def user_screen_name_user_id_hashtable(self):
 
+    def user_screen_name_user_id_hashtable(self):
         self.logger.info('Generating user_screen_name_user_id hashtable')
         start = time.time()
 
@@ -110,8 +108,9 @@ class Map:
         # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
         # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
         # una colonna 'size' e restituendo effettivamente un dataframe.
-        user_screen_name_user_id = user_screen_name_user_id.groupby(['user_screen_name', 
-                                            'user_id'], as_index=False).size().rename(columns={'size': 'weight'})
+        user_screen_name_user_id = user_screen_name_user_id.groupby(['user_screen_name',
+                                                                     'user_id'], as_index=False).size().rename(
+            columns={'size': 'weight'})
 
         end = time.time()
         self.logger.info('User_screen_name_user_id hastable generation execution time: %5.2fs' % (end - start))

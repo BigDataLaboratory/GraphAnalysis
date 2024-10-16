@@ -8,10 +8,10 @@ from Utils.Utils import Utils
 class Multigraph:
     logger = logging.getLogger('Multigraph')
 
-    def __init__(self, tweets=None):
+    def __init__(self, tweets: dict = None):
         self.tweets = tweets
 
-    def gen_multigraph(self, df_list):
+    def gen_multigraph(self, df_list: pd.DataFrame):
         """
         Give a list of dataframes that represent different edgelists, build a single dataframe concat each dataframe
         in the input list
