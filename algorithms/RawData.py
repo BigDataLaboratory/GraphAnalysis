@@ -7,7 +7,7 @@ from pymongo import MongoClient
 from Utils.Const import Const as c
 
 
-class RawData():
+class RawData:
 
     def __init__(self, uri, username=None, password=None, authSource=None, authMechanism=None, db=None, collection=None, type="mongo"):
         self.uri = uri

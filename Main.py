@@ -12,16 +12,19 @@ import pandas as pd
 import logging
 import os
 
+from algorithms.TopicGenerator import TopicGenerator
+
 os.chdir(Path(__file__).parent)
 
 logging.basicConfig(filename='./logs/logs.log',
                     filemode='a',
                     format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
                     datefmt='%H:%M:%S',
-                    level='INFO')
+                    level='DEBUG')
 
 
 class GraphAnalysis:
+    logger = logging.getLogger('GraphAnalysis')
 
     def __init__(self, parameters):
         self.parameters = parameters
@@ -131,7 +134,9 @@ class GraphAnalysis:
         # Community detection
         if self.parameters.do_community_detection:
             leiden_instance = Leiden()
-            g = leiden_instance.csv_to_igraph(input_csv_graph_file_path=self.parameters.graph_file_path) if self.parameters.do_read_graph_from_file else leiden_instance.csv_to_igraph(dataframe_graph=multigraph)
+            g = leiden_instance.csv_to_igraph(
+                input_csv_graph_file_path=self.parameters.graph_file_path) if self.parameters.do_read_graph_from_file else leiden_instance.csv_to_igraph(
+                dataframe_graph=multigraph)
             leiden_instance.add_leiden_to_igraph(g)
             communities = leiden_instance.get_clusters_as_dataframe(g)
             Utils.persist_to_file(communities, "{}".format(self.parameters.community_output_file_path))
@@ -183,11 +188,14 @@ class GraphAnalysis:
             """
 
             result = raw_data.query(None, ['text', 'user.id', 'created_at.$date'])
+            self.logger.debug("Generated final intermediate result with text data")
 
         if self.parameters.do_topic_builder:
             # missing implementation
             # BERT Topic
+            topic_generator = TopicGenerator()
             pass
+
 
 def get_properties():
     import json
