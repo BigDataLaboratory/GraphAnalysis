@@ -53,4 +53,5 @@ class RawData:
             return result
         elif self.type == c.CSV:
             result = pd.read_csv(self.uri, sep=",", header=0, lineterminator='\n', usecols=project)
+            result = result.query(where) if where is not None else result
             return result
