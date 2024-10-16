@@ -1,5 +1,5 @@
 from itertools import combinations
-
+from datetime import datetime
 import mmh3
 
 
@@ -28,13 +28,17 @@ class Utils:
         if x is not None:
             hashed = []
             for ht in x:
-                hashed.append(mmh3.hash64(ht, 0)[0])
+                hashed.append(mmh3.hash64(ht, 0, signed=False)[0])
             hashed.sort()
             return list(combinations(hashed, 2))
+        else:
+            return list()
 
     @staticmethod
-    def persist_to_file(obj, file_path='./graph.csv', format="csv"):
+    def persist_to_file(obj, file_path='./graph', format="csv"):
         if format == "csv":
-            obj.to_csv(file_path + ".csv", index=False)
+            obj.to_csv(file_path + "_" + datetime.now().strftime("%d_%m_%Y_%H_%M_%S") + ".csv", index=False, mode='a')
         elif format == "gml":
-            obj.save(file_path + ".gml")
+            obj.save(file_path + "_" + datetime.now().strftime("%d_%m_%Y_%H_%M_%S") + ".gml")
+        elif format == "json":
+            obj.to_json(file_path + "_" + datetime.now().strftime("%d_%m_%Y_%H_%M_%S") + ".json", lines=True, orient='records', mode='a')
