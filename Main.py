@@ -72,8 +72,6 @@ class GraphAnalysis:
                  'userMentionEntities'
                  ]
             tweets = raw_data.query(w, s)
-            print(tweets)
-            print(tweets.columns)
 
             multigraph_instance = Multigraph(tweets)
             map_instance = Map(tweets)
