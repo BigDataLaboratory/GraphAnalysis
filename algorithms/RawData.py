@@ -48,7 +48,6 @@ class RawData():
             with open(self.uri, 'r') as file:
                 result = json.load(file)
             result = pd.json_normalize(result)
-            print(result.columns)
             result = result[project] if project is not None and len(project) > 0 else result
             result = result.query(where) if where is not None else result
             return result
