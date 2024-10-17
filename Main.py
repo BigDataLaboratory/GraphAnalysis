@@ -37,7 +37,7 @@ class GraphAnalysis:
                                self.parameters.source_password,
                                self.parameters.source_auth_source,
                                self.parameters.source_auth_mechanism,
-                               input_type=c.JSON)
+                               input_type=c.MONGO)
 
             raw_data.connect(self.parameters.source_db_name, self.parameters.source_collection)
 
