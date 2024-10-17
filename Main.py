@@ -1,3 +1,4 @@
+import argparse
 from collections import namedtuple
 
 from algorithms.Multigraph import Multigraph
@@ -197,16 +198,24 @@ class GraphAnalysis:
             pass
 
 
-def get_properties():
+def get_properties(file_path="properties/prop.json"):
     import json
-    with open('properties/prop.json') as f:
+    with open(file_path) as f:
         properties = json.load(f)
     return properties
 
 
 if __name__ == '__main__':
 
-    prop: dict = get_properties()
+    parser = argparse.ArgumentParser(description="Command line args")
+    parser.add_argument('--properties', type=str, help='Properties file path')
+    args = parser.parse_args()
+
+    if args.properties is not None:
+        prop: dict = get_properties(args.properties)
+    else:
+        prop: dict = get_properties()
+
     do_graph_generation = prop["graph_generation"]["to_execute"]
     do_community_detection = prop["community_detection"]["to_execute"]
     do_get_text = prop["get_users_text"]["to_execute"]
