@@ -10,7 +10,8 @@ from typing import Any, Optional
 
 class RawData:
 
-    def __init__(self, uri: str, username: str = None, password: str = None, auth_source: str = None, auth_mechanism: str = None, db: str = None, collection: str = None, input_type: str = "mongo"):
+    def __init__(self, uri, username=None, password=None, auth_source=None, auth_mechanism=None, db=None,
+                 collection=None, input_type="mongo"):
         self.uri = uri
         self.username = username
         self.password = password
@@ -37,11 +38,11 @@ class RawData:
     def get_collection(self):
         return self.collection
 
-    def set_collection(self, collection_name: str):
+    def set_collection(self, collection_name):
         if collection_name != self.collection:
             self.collection = self.db[collection_name]
 
-    def query(self, where: str = None, project: list = None, batch_size: int = 100):
+    def query(self, where=None, project=None, batch_size=100):
         if self.type == c.MONGO:
             result = self.collection.find(where, project, batch_size=batch_size)
             return pd.json_normalize(result)

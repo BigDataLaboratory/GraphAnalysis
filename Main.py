@@ -43,7 +43,7 @@ class GraphAnalysis:
 
             """
             use it when mongo is available again
-            
+            """
             w = {'$or': [{'hashtagEntities': {'$exists': True}}, {'retweeted_status': {'$exists': True}},
                          {'in_reply_to_status_id': {'$exists': True}}]}
             s = {'_id': 0,
@@ -59,8 +59,8 @@ class GraphAnalysis:
                  'hashtagEntities': 1,
                  'created_at': 1,
                  'userMentionEntities': 1}
-            """
 
+            """
             w = 'hashtagEntities.notnull() | `retweeted_status.id`.notnull() | in_reply_to_status_id.notnull()'
             s = ['id',
                  'in_reply_to_status_id',
@@ -75,6 +75,7 @@ class GraphAnalysis:
                  'created_at.$date',
                  'userMentionEntities'
                  ]
+            """
             tweets = raw_data.query(w, s)
 
             multigraph_instance = Multigraph(tweets)
