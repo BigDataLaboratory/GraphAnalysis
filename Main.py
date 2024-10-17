@@ -17,11 +17,11 @@ from algorithms.TopicGenerator import TopicGenerator
 
 os.chdir(Path(__file__).parent)
 
-logging.basicConfig(filename='./logs/logs.log',
-                    filemode='a',
+logging.basicConfig(filename='/ipazianas/pasquini/logs/ga_logs.log',
+                    filemode='w',
                     format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
                     datefmt='%H:%M:%S',
-                    level='DEBUG')
+                    level='INFO')
 
 
 class GraphAnalysis:
