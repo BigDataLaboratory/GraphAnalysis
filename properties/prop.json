@@ -1,4 +1,8 @@
 {
+  "log": {
+    "filepath": "logs/logs.log",
+    "level": "INFO"
+  },
   "graph_generation": {
     "to_execute": false,
     "parameters": {
@@ -76,9 +80,14 @@
     }
   },
   "topic_builder": {
-    "to_execute": false,
+    "to_execute": true,
     "parameters": {
-
+      "topics_file_path": "./resources/topics_info",
+      "docs_file_path": "./resources/docs_info",
+      "model": {
+        "model_path": "./resources/topic_model",
+        "serialization": "pickle"
+      }
     }
   }
 }

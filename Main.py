@@ -16,12 +16,6 @@ from algorithms.TopicGenerator import TopicGenerator
 
 os.chdir(Path(__file__).parent)
 
-logging.basicConfig(filename='/ipazianas/pasquini/logs/ga_logs.log',
-                    filemode='w',
-                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                    datefmt='%H:%M:%S',
-                    level='INFO')
-
 
 class GraphAnalysis:
     logger = logging.getLogger('GraphAnalysis')
@@ -154,13 +148,14 @@ class GraphAnalysis:
                 raise AttributeError("It's not possible to use maps generated at runtime")
             else:
                 user_map = pd.read_csv(self.parameters.user_map, sep=",", header=0)
-                hashtag_map = pd.read_csv(self.parameters.hashtag_map, sep=",", header=0)
                 retweet_user_map = pd.read_csv(self.parameters.retweet_user_map, sep=",", header=0)
+                u_map = pd.concat([user_map[["original", "node_hash"]], retweet_user_map[["original", "node_hash"]]])\
+                    .drop_duplicates(ignore_index=True)
 
             indexes = self.parameters.community_indexes if self.parameters.community_indexes else []
             communities = communities[communities[self.parameters.community_col_name].isin(indexes)]
 
-            merged = communities.merge(pd.concat([user_map, retweet_user_map]), left_on="node_hash",
+            merged = communities.merge(u_map, left_on="node_hash",
                                        right_on="node_hash",
                                        how="inner")
 
@@ -178,24 +173,59 @@ class GraphAnalysis:
 
             """
             use it when mongo is available again
+
+            pipeline = [
+                {
+                    '$match': {
+                        'user.id': { '$in': u }  # Filter docs based on users list
+                    }
+                },
+                {
+                    '$project': {
+                        'text': {
+                            '$cond': {
+                                'if': { '$gt': ['$retweeted_status', None] },  # Check if it is a retweet
+                                'then': '$retweeted_status.text',              # If it is a retweet, get the text field retweeted_status
+                                'else': '$text'                                # else, get the original text field
+                            }
+                        },
+                        '_id': 0,
+                        'user.id': 1,
+                        'created_at': 1,
+                        'type': {
+                            '$cond': {
+                                'if': { '$gt': ['$retweeted_status', None] },  # Check if it is a retweet
+                                'then': 'normal',                              # If it is a retweet, set "normal" to type
+                                'else': 'retweet'                              # else set "retweet"
+                            }
+                        }
+                    }
+                }
+            ]
             
-            w = {'user.id': {'$in': u}}
-            s = {
-                '_id': 0,
-                'text': 1,
-                'user.id': 1,
-                'created_at': 1
-            }
+            results = collection.aggregate(pipeline)
             """
 
             result = raw_data.query(None, ['text', 'user.id', 'created_at.$date'])
             self.logger.debug("Generated final intermediate result with text data")
 
         if self.parameters.do_topic_builder:
-            # missing implementation
             # BERT Topic
-            topic_generator = TopicGenerator()
-            pass
+            topic_generator = TopicGenerator(result["text"].values.tolist())
+            tm, t, p = topic_generator.topic_modeling()
+
+            tp = pd.DataFrame(
+                {'topic': t,
+                 'prob': p
+                 })
+
+            text_with_topics = pd.concat([result, tp], axis=1)
+            di = tm.get_document_info(result["text"].values.tolist())
+
+            Utils.persist_to_file(text_with_topics, self.parameters.topics_file_path+"1234")
+            Utils.persist_to_file(tm.get_topic_info(), self.parameters.topics_file_path)
+            Utils.persist_to_file(di, self.parameters.docs_file_path)
+            tm.save(self.parameters.model_path, serialization=self.parameters.model_serialization, save_ctfidf=True)
 
 
 def get_properties(file_path="properties/prop.json"):
@@ -203,6 +233,14 @@ def get_properties(file_path="properties/prop.json"):
     with open(file_path) as f:
         properties = json.load(f)
     return properties
+
+
+def set_logger(filepath, level='INFO'):
+    logging.basicConfig(filename=filepath,
+                        filemode='w',
+                        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                        datefmt='%H:%M:%S',
+                        level=level)
 
 
 if __name__ == '__main__':
@@ -216,6 +254,7 @@ if __name__ == '__main__':
     else:
         prop: dict = get_properties()
 
+    set_logger(prop["log"]["filepath"], prop["log"]["level"])
     do_graph_generation = prop["graph_generation"]["to_execute"]
     do_community_detection = prop["community_detection"]["to_execute"]
     do_get_text = prop["get_users_text"]["to_execute"]
@@ -273,6 +312,12 @@ if __name__ == '__main__':
     td_db_name = text_data_config["db_name"]
     td_collection = text_data_config["collection"]
 
+    topic_config = prop["topic_builder"]["parameters"]
+    topics_file_path = topic_config["topics_file_path"]
+    docs_file_path = topic_config["docs_file_path"]
+    model_path = topic_config["model"]["model_path"]
+    model_serialization = topic_config["model"]["serialization"]
+
     Parameters = namedtuple('Parameters', [
         "do_graph_generation",
         "do_community_detection",
@@ -317,7 +362,11 @@ if __name__ == '__main__':
         "td_auth_source",
         "td_auth_mechanism",
         "td_db_name",
-        "td_collection"
+        "td_collection",
+        "topics_file_path",
+        "docs_file_path",
+        "model_path",
+        "model_serialization"
     ])
 
     P = Parameters(do_graph_generation,
@@ -363,7 +412,11 @@ if __name__ == '__main__':
                    td_auth_source,
                    td_auth_mechanism,
                    td_db_name,
-                   td_collection
+                   td_collection,
+                   topics_file_path,
+                   docs_file_path,
+                   model_path,
+                   model_serialization
                    )
     graph_analysis = GraphAnalysis(P)
     try:
