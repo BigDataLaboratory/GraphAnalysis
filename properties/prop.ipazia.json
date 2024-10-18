@@ -53,7 +53,6 @@
         "community_col_name": "cluster3",
         "read_communities_from_file": true,
         "community_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_16_10_2024_17_09_21.csv"
-
       },
       "map_file_path": {
         "read_maps_from_file": true,
@@ -76,9 +75,14 @@
     }
   },
   "topic_builder": {
-    "to_execute": false,
+    "to_execute": true,
     "parameters": {
-
+      "topics_file_path": "/ipazianas/pasquini/output_graph_analysis/topics_info",
+      "docs_file_path": "/ipazianas/pasquini/output_graph_analysis/docs_info",
+      "model": {
+        "model_path": "/ipazianas/pasquini/output_graph_analysis/topic_model",
+        "serialization": "pickle"
+      }
     }
   }
 }
