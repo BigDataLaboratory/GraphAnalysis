@@ -8,7 +8,7 @@ from Utils.Utils import Utils
 class Map:
     logger = logging.getLogger('Map')
 
-    def __init__(self, tweets: dict):
+    def __init__(self, tweets: pd.DataFrame):
         self.tweets = tweets
 
     def user_id_hashtable(self):
@@ -32,47 +32,55 @@ class Map:
         return user_hash
 
     def hashtag_hashtable(self):
-        self.logger.info('Generating hashtag hashtable')
-        start = time.time()
+        if 'hashtagEntities' in self.tweets.columns:
+            self.logger.info('Generating hashtag hashtable')
+            start = time.time()
 
-        hashtag = self.tweets['hashtagEntities'].apply(lambda x: x.lower().split('|') if isinstance(x, str) else [])
+            hashtag = self.tweets['hashtagEntities'].apply(lambda x: x.lower().split('|') if isinstance(x, str) else [])
 
-        hashtag_exploded = hashtag.explode(ignore_index=True).dropna()
-        hashtag_hash = hashtag_exploded.apply(Utils.compute_hash)
-        hashtag_hash_df = pd.DataFrame({'original': hashtag_exploded, 'node_hash': hashtag_hash})
+            hashtag_exploded = hashtag.explode(ignore_index=True).dropna()
+            hashtag_hash = hashtag_exploded.apply(Utils.compute_hash)
+            hashtag_hash_df = pd.DataFrame({'original': hashtag_exploded, 'node_hash': hashtag_hash})
 
-        # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
-        # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
-        # una colonna 'size' e restituendo effettivamente un dataframe.
-        hashtag_hash_df = hashtag_hash_df.groupby(['original',
-                                                   'node_hash'], as_index=False).size().rename(
-            columns={'size': 'weight'})
+            # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
+            # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
+            # una colonna 'size' e restituendo effettivamente un dataframe.
+            hashtag_hash_df = hashtag_hash_df.groupby(['original',
+                                                       'node_hash'], as_index=False).size().rename(
+                columns={'size': 'weight'})
 
-        end = time.time()
-        self.logger.info('Hashtag hashtable generation execution time: %5.2fs' % (end - start))
+            end = time.time()
+            self.logger.info('Hashtag hashtable generation execution time: %5.2fs' % (end - start))
 
-        return hashtag_hash_df
+            return hashtag_hash_df
+        else:
+            self.logger.info('Not generating hashtag hashtable')
+            return None
 
     def user_id_retweet_hashtable(self):
-        self.logger.info('Generating user_id_retweet hashtable')
-        start = time.time()
+        if 'retweeted_status.user.id' in self.tweets.columns:
+            self.logger.info('Generating user_id_retweet hashtable')
+            start = time.time()
 
-        id = self.tweets['retweeted_status.user.id']
-        retweet_user_hash = pd.DataFrame({'original': id, 'node_hash': id.apply(Utils.hash)})
+            id = self.tweets['retweeted_status.user.id']
+            retweet_user_hash = pd.DataFrame({'original': id, 'node_hash': id.apply(Utils.hash)})
 
-        retweet_user_hash.dropna().reset_index()
+            retweet_user_hash.dropna().reset_index()
 
-        # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
-        # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
-        # una colonna 'size' e restituendo effettivamente un dataframe.
-        retweet_user_hash = retweet_user_hash.groupby(['original',
-                                                       'node_hash'], as_index=False).size().rename(
-            columns={'size': 'weight'})
+            # Restituisce un DataFrame: as_index=False imposta il raggruppamento in SQL-style
+            # ed in combinazione con size() conta il numero di righe per ogni gruppo aggiungendo
+            # una colonna 'size' e restituendo effettivamente un dataframe.
+            retweet_user_hash = retweet_user_hash.groupby(['original',
+                                                           'node_hash'], as_index=False).size().rename(
+                columns={'size': 'weight'})
 
-        end = time.time()
-        self.logger.info('User_id_retweet hastable generation execution time: %5.2fs' % (end - start))
+            end = time.time()
+            self.logger.info('User_id_retweet hastable generation execution time: %5.2fs' % (end - start))
 
-        return retweet_user_hash
+            return retweet_user_hash
+        else:
+            self.logger.info('Not generating user_id_retweet hashtable')
+            return None
 
     def user_screen_name_hashtable(self):
         self.logger.info('Generating user_screen_name hashtable')
