@@ -79,7 +79,7 @@
     }
   },
   "topic_builder": {
-    "to_execute": true,
+    "to_execute": false,
     "parameters": {
       "topics_file_path": "/ipazianas/pasquini/output_graph_analysis/topics_info",
       "docs_file_path": "/ipazianas/pasquini/output_graph_analysis/docs_info",
