@@ -5,9 +5,7 @@ import pymongo.errors
 from pymongo import MongoClient
 
 from Utils.Const import Const as c
-from typing import Any, Optional
-
-from Utils.Utils import Utils
+ì
 
 
 class RawData:

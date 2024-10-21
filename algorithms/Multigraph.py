@@ -1,4 +1,4 @@
-import modin.pandas as pd
+import pandas as pd
 import logging
 import time
 
