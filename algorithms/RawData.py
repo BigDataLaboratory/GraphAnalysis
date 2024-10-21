@@ -7,6 +7,8 @@ from pymongo import MongoClient
 from Utils.Const import Const as c
 from typing import Any, Optional
 
+from Utils.Utils import Utils
+
 
 class RawData:
 
@@ -44,8 +46,8 @@ class RawData:
 
     def query(self, where=None, project=None, batch_size=100):
         if self.type == c.MONGO:
-            result = self.collection.find(where, project, batch_size=batch_size)
-            return pd.json_normalize(result)
+            for batch in self.collection.find(where, project, batch_size=batch_size):
+                return pd.json_normalize(batch)
         elif self.type == c.JSON:
             with open(self.uri, 'r') as file:
                 result = json.load(file)
