@@ -112,10 +112,12 @@ class GraphAnalysis:
             Utils.persist_to_file(user_map, "{}/{}_user_id".format(self.parameters.output_graph_path,
                                                                    self.parameters.output_map_prefix))
             hashtag_map = map_instance.hashtag_hashtable()
-            Utils.persist_to_file(hashtag_map, "{}/{}_hashtag".format(self.parameters.output_graph_path,
-                                                                      self.parameters.output_map_prefix))
+            if hashtag_map is not None:
+                Utils.persist_to_file(hashtag_map, "{}/{}_hashtag".format(self.parameters.output_graph_path,
+                                                                          self.parameters.output_map_prefix))
             retweet_user_map = map_instance.user_id_retweet_hashtable()
-            Utils.persist_to_file(retweet_user_map, "{}/{}_retweeted_user_id".format(self.parameters.output_graph_path,
+            if retweet_user_map is not None:
+                Utils.persist_to_file(retweet_user_map, "{}/{}_retweeted_user_id".format(self.parameters.output_graph_path,
                                                                                      self.parameters.output_map_prefix))
             user_screen_name_map = map_instance.user_screen_name_hashtable()
             Utils.persist_to_file(user_screen_name_map,
@@ -130,6 +132,7 @@ class GraphAnalysis:
             #multigraph = multigraph_instance.gen_multigraph(graph_list)
             #Utils.persist_to_file(multigraph, "{}/{}".format(self.parameters.output_graph_path,
             #                                                self.parameters.output_multi_graph_path))
+            multigraph = None
 
         # Community detection
         if self.parameters.do_community_detection:
