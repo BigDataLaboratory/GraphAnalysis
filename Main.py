@@ -75,6 +75,8 @@ class GraphAnalysis:
             """
             tweets = raw_data.query_data_in_chunks(w, s)
 
+            print(tweets)
+
             multigraph_instance = Multigraph(tweets)
             map_instance = Map(tweets)
 

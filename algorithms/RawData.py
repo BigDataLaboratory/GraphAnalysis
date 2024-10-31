@@ -83,8 +83,6 @@ class RawData:
             print(f"Process {process_id} processing document ID: {document['id']}")
             return pd.json_normalize(document)
 
-    import multiprocessing
-
     def query_data_in_chunks(self, where, project, num_processes=os.cpu_count(), batch_size=1000):
         """
         Distribute MongoDB query processing across multiple processes using chunked processing.
