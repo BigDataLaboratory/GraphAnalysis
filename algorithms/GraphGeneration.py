@@ -54,10 +54,10 @@ class GraphGeneration:
             return None
 
     def relationship_retweet(self, d):
-        if d.get('retweeted_status.user.id', None) is not None:
+        if d.get('retweeted_status') is not None:
             # DataFrame e_rt (retweet)
-            e_rt_src = Utils.hash(d['user.id'])
-            e_rt_dst = Utils.hash(d['retweeted_status.user.id'])
+            e_rt_src = Utils.hash(d['user']['id'])
+            e_rt_dst = Utils.hash(d['retweeted_status']['user']['id'])
             weight = 1
             relationship = 'retweet'
             e_rt = e_rt_src, e_rt_dst, weight, relationship
