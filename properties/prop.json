@@ -15,15 +15,17 @@
           "authName": null,
           "authMechanism": null,
           "db_name": null,
-          "collection": null
+          "collection": null,
+          "chunk_start_date": null,
+          "chunk_end_date": null
         }
     },
       "graph_type": {
         "retweet": true,
-        "user_hashtag": true,
-        "response": true,
-        "mention": true,
-        "hashtag_cooccurrences": true
+        "user_hashtag": false,
+        "response": false,
+        "mention": false,
+        "hashtag_cooccurrences": false
       },
       "output": {
         "path": "./resources/",

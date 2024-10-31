@@ -15,15 +15,17 @@
           "authName": "twitter",
           "authMechanism": "SCRAM-SHA-1",
           "db_name": "twitter",
-          "collection": "QCPS_2"
+          "collection": "QCPS_2",
+          "chunk_start_date": null,
+          "chunk_end_date": null
         }
     },
       "graph_type": {
         "retweet": true,
-        "user_hashtag": true,
-        "response": true,
-        "mention": true,
-        "hashtag_cooccurrences": true
+        "user_hashtag": false,
+        "response": false,
+        "mention": false,
+        "hashtag_cooccurrences": false
       },
       "output": {
         "path": "/ipazianas/pasquini/output_graph_analysis/",

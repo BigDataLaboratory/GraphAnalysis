@@ -30,9 +30,12 @@ class GraphAnalysis:
                                self.parameters.source_password,
                                self.parameters.source_auth_source,
                                self.parameters.source_auth_mechanism,
+                               self.parameters.source_collection,
+                               self.parameters.source_chunk_start_date,
+                               self.parameters.source_chunk_end_date,
                                input_type=self.parameters.source_input_type)
 
-            raw_data.connect(self.parameters.source_db_name, self.parameters.source_collection)
+            raw_data.connect(self.parameters.source_db_name)
 
             """
             use it when mongo is available again
@@ -177,7 +180,7 @@ class GraphAnalysis:
                                self.parameters.source_auth_mechanism,
                                input_type=self.parameters.td_input_type)
 
-            raw_data.connect(self.parameters.source_db_name, self.parameters.source_collection)
+            raw_data.connect(self.parameters.source_db_name)
 
             """
             use it when mongo is available again
@@ -277,6 +280,8 @@ if __name__ == '__main__':
     source_auth_mechanism = config["authMechanism"]
     source_db_name = config["db_name"]
     source_collection = config["collection"]
+    source_chunk_start_date = config["chunk_start_date"]
+    source_chunk_end_date = config["chunk_end_date"]
 
     do_retweet_graph = prop["graph_generation"]["parameters"]["graph_type"]["retweet"]
     do_hashtag_graph = prop["graph_generation"]["parameters"]["graph_type"]["user_hashtag"]
@@ -339,6 +344,8 @@ if __name__ == '__main__':
         "source_auth_mechanism",
         "source_db_name",
         "source_collection",
+        "source_chunk_start_date",
+        "source_chunk_end_date",
         "do_retweet_graph",
         "do_hashtag_graph",
         "do_hashtag_cooccurrences_graph",
@@ -389,6 +396,8 @@ if __name__ == '__main__':
                    source_auth_mechanism,
                    source_db_name,
                    source_collection,
+                   source_chunk_start_date,
+                   source_chunk_end_date,
                    do_retweet_graph,
                    do_hashtag_graph,
                    do_hashtag_cooccurrences_graph,
