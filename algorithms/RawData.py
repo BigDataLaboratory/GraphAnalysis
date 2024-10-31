@@ -80,7 +80,7 @@ class RawData:
 
         for document in cursor:
             # Process the document here (you can modify this to suit your needs)
-            print(f"Process {process_id} processing document ID: {document['_id']}")
+            print(f"Process {process_id} processing document ID: {document['id']}")
             return pd.json_normalize(document)
 
     import multiprocessing
