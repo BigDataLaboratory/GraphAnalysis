@@ -85,7 +85,7 @@ class RawData:
 
     import multiprocessing
 
-    def query_data_in_chunks(self, where, project, num_processes, batch_size):
+    def query_data_in_chunks(self, where, project, num_processes=os.cpu_count(), batch_size=1000):
         """
         Distribute MongoDB query processing across multiple processes using chunked processing.
         """
@@ -110,9 +110,6 @@ class RawData:
         # Ensure any remaining processes finish
         for process in processes:
             process.join()
-
-    if __name__ == "__main__":
-        query_data_in_chunks(where, project, num_processes=os.cpu_count(), batch_size=1000)
 
     def query(self, where=None, project=None, batch_size=100):
         if self.type == c.MONGO:
