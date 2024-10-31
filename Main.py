@@ -26,14 +26,14 @@ class GraphAnalysis:
 
     def run(self):
         if self.parameters.do_graph_generation:
-            raw_data = RawData(self.parameters.source_uri,
-                               self.parameters.source_username,
-                               self.parameters.source_password,
-                               self.parameters.source_auth_source,
-                               self.parameters.source_auth_mechanism,
-                               self.parameters.source_collection,
-                               self.parameters.source_chunk_start_date,
-                               self.parameters.source_chunk_end_date,
+            raw_data = RawData(uri=self.parameters.source_uri,
+                               username=self.parameters.source_username,
+                               password=self.parameters.source_password,
+                               auth_source=self.parameters.source_auth_source,
+                               auth_mechanism=self.parameters.source_auth_mechanism,
+                               collection=self.parameters.source_collection,
+                               start_date=self.parameters.source_chunk_start_date,
+                               end_date=self.parameters.source_chunk_end_date,
                                input_type=self.parameters.source_input_type)
 
             raw_data.connect(self.parameters.source_db_name)
