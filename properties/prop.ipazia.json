@@ -21,7 +21,7 @@
         }
     },
       "graph_type": {
-        "retweet": true,
+        "retweet": false,
         "user_hashtag": false,
         "response": false,
         "mention": false,

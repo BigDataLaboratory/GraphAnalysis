@@ -9,8 +9,10 @@ from datetime import datetime, timedelta
 from Utils.Const import Const as c
 import os
 
+from Utils.Utils import Utils
 
-class RawData:
+
+class GraphGeneration:
 
     def __init__(self, uri, username=None, password=None, auth_source=None, auth_mechanism=None, db=None,
                  collection=None, start_date=None, end_date=None, input_type="mongo"):
@@ -51,6 +53,15 @@ class RawData:
         else:
             return None
 
+    def relationship_retweet(self, d):
+        if d.get('retweeted_status.user.id', None) is not None:
+            # DataFrame e_rt (retweet)
+            e_rt_src = Utils.hash(d['user.id'])
+            e_rt_dst = Utils.hash(d['retweeted_status.user.id'])
+            weight = 1
+            relationship = 'retweet'
+            e_rt = e_rt_src, e_rt_dst, weight, relationship
+            return e_rt
 
     def generate_date_chunks(self, start_date, end_date, delta):
         """
@@ -59,10 +70,10 @@ class RawData:
         current_date = start_date
         while current_date < end_date:
             next_date = current_date + delta
-            yield (current_date, next_date)
+            yield current_date, next_date
             current_date = next_date
 
-    def worker_process(self, where, project, chunk, batch_size, process_id):
+    def worker_process(self, where, project, chunk, batch_size, process_id, shared_list):
         """
         Worker function to process a chunk of data from MongoDB.
         """
@@ -76,13 +87,13 @@ class RawData:
         where_f = {'$and': [where, d]}
 
         # Retrieve documents in batches
-        cursor = c.find(where_f, project).sort('created_at', ASCENDING).batch_size(batch_size)
+        cursor = c.find(where_f, project).sort('created_at', ASCENDING).limit(100000).batch_size(batch_size)
 
         for document in cursor:
             # Process the document here (you can modify this to suit your needs)
             print(f"Process {process_id} processing document ID: {document['id']}")
-
-            return pd.json_normalize(document)
+            e_rt = self.relationship_retweet(document)
+            shared_list.append(e_rt)
 
     def query_data_in_chunks(self, where, project, num_processes=os.cpu_count(), batch_size=1000):
         """
@@ -92,23 +103,29 @@ class RawData:
         delta = timedelta(weeks=1)
         chunks = list(self.generate_date_chunks(self.start_date, self.end_date, delta))
 
-        # Prepare to launch processes
-        processes = []
+        with multiprocessing.Manager() as manager:
+            # Prepare to launch processes
+            processes = []
+            shared_list = manager.list()
 
-        for i, chunk in enumerate(chunks):
-            process = multiprocessing.Process(target=self.worker_process, args=(where, project, chunk, batch_size, i))
-            processes.append(process)
-            process.start()
+            for i, chunk in enumerate(chunks):
+                process = multiprocessing.Process(target=self.worker_process, args=(where, project, chunk, batch_size, i, shared_list))
+                processes.append(process)
+                process.start()
 
-            # If you've reached the max number of processes, wait for them to finish before continuing
-            if len(processes) == num_processes:
-                for p in processes:
-                    p.join()
-                processes = []
+                # If you've reached the max number of processes, wait for them to finish before continuing
+                if len(processes) == num_processes:
+                    for p in processes:
+                        p.join()
+                    processes = []
 
-        # Ensure any remaining processes finish
-        for process in processes:
-            process.join()
+            # Ensure any remaining processes finish
+            for process in processes:
+                process.join()
+
+            # Convert the shared list to a regular list (for convenience)
+            results = list(shared_list)
+        return results
 
     def query(self, where=None, project=None, batch_size=100):
         if self.type == c.MONGO:

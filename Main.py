@@ -2,6 +2,7 @@ import argparse
 from collections import namedtuple
 from datetime import datetime
 
+from algorithms.GraphGeneration import GraphGeneration
 from algorithms.Multigraph import Multigraph
 from algorithms.Map import Map
 from pathlib import Path
@@ -26,7 +27,7 @@ class GraphAnalysis:
 
     def run(self):
         if self.parameters.do_graph_generation:
-            raw_data = RawData(uri=self.parameters.source_uri,
+            raw_data = GraphGeneration(uri=self.parameters.source_uri,
                                username=self.parameters.source_username,
                                password=self.parameters.source_password,
                                auth_source=self.parameters.source_auth_source,
