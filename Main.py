@@ -1,5 +1,6 @@
 import argparse
 from collections import namedtuple
+from datetime import datetime
 
 from algorithms.Multigraph import Multigraph
 from algorithms.Map import Map
@@ -280,8 +281,8 @@ if __name__ == '__main__':
     source_auth_mechanism = config["authMechanism"]
     source_db_name = config["db_name"]
     source_collection = config["collection"]
-    source_chunk_start_date = config["chunk_start_date"]
-    source_chunk_end_date = config["chunk_end_date"]
+    source_chunk_start_date = datetime.strptime(config["chunk_start_date"], '%d/%m/%Y')
+    source_chunk_end_date = datetime.strptime(config["chunk_end_date"], '%d/%m/%Y')
 
     do_retweet_graph = prop["graph_generation"]["parameters"]["graph_type"]["retweet"]
     do_hashtag_graph = prop["graph_generation"]["parameters"]["graph_type"]["user_hashtag"]
