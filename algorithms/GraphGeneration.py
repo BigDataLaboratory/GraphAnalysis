@@ -108,16 +108,18 @@ class GraphGeneration:
         where_f = {'$and': [where, d]}
 
         # Retrieve documents in batches
-        cursor = c.find(where_f, project).sort('created_at', ASCENDING).limit(5000).batch_size(batch_size)
+        cursor = c.find(where_f, project).sort('created_at', ASCENDING).limit(500).batch_size(batch_size)
 
         for document in cursor:
             # Process the document here (you can modify this to suit your needs)
             print(f"Process {process_id} processing document ID: {document['id']}")
 
-            e_rt = self.process_document(document)
-            shared_list.append(e_rt)
+            edges = self.process_document(document)
+            for item in edges:
+                key = (item[0], item[1], item[3])  # key = (first, second, fourth)
+                shared_list[key] += item[2]  # Sum the third element
 
-    def query_data_in_chunks(self, where, project, num_processes=os.cpu_count(), batch_size=1000):
+    def query_data_in_chunks(self, where, project, num_processes=os.cpu_count(), batch_size=500):
         """
         Distribute MongoDB query processing across multiple processes using chunked processing.
         """
@@ -128,7 +130,7 @@ class GraphGeneration:
         with multiprocessing.Manager() as manager:
             # Prepare to launch processes
             processes = []
-            shared_list = manager.list()
+            shared_list = manager.dict()
 
             for i, chunk in enumerate(chunks):
                 process = multiprocessing.Process(target=self.worker_process, args=(where, project, chunk, batch_size, i, shared_list))
@@ -145,13 +147,10 @@ class GraphGeneration:
             for process in processes:
                 process.join()
 
-            # Convert the shared list to a regular list (for convenience)
-            results = list(shared_list)
-            print("LIST RESULtS")
-            print(results)
+        result = [(k[0], k[1], v, k[2]) for k, v in shared_list.items()]
         print("FINAL")
-        print(results)
-        return results
+        print(result)
+        return result
 
     def query(self, where=None, project=None, batch_size=100):
         if self.type == c.MONGO:
