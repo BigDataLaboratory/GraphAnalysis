@@ -149,8 +149,7 @@ class GraphGeneration:
             # Ensure any remaining processes finish
             for process in processes:
                 process.join()
-
-        result = [(k[0], k[1], v, k[2]) for k, v in shared_list.items()]
+            result = [(k[0], k[1], v, k[2]) for k, v in shared_list.items()]
         print("FINAL")
         print(result)
         return result
