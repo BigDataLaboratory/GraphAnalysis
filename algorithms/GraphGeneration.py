@@ -120,6 +120,7 @@ class GraphGeneration:
                 if key not in shared_list:
                     shared_list[key] = 0
                 shared_list[key] += item[2]  # Sum the third element
+            print(shared_list)
 
     def query_data_in_chunks(self, where, project, num_processes=os.cpu_count(), batch_size=500):
         """
