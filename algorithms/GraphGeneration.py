@@ -117,6 +117,8 @@ class GraphGeneration:
             edges = self.process_document(document)
             for item in edges:
                 key = (item[0], item[1], item[3])  # key = (first, second, fourth)
+                if key not in shared_list:
+                    shared_list[key] = 0
                 shared_list[key] += item[2]  # Sum the third element
 
     def query_data_in_chunks(self, where, project, num_processes=os.cpu_count(), batch_size=500):
