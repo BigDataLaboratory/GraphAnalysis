@@ -53,15 +53,36 @@ class GraphGeneration:
         else:
             return None
 
-    def relationship_retweet(self, d):
-        if d.get('retweeted_status') is not None:
-            # DataFrame e_rt (retweet)
-            e_rt_src = Utils.hash(d['user']['id'])
-            e_rt_dst = Utils.hash(d['retweeted_status']['user']['id'])
-            weight = 1
-            relationship = 'retweet'
-            e_rt = e_rt_src, e_rt_dst, weight, relationship
-            return e_rt
+    def process_document(self, d):
+        o = []
+        n_user_id = Utils.hash(d['user']['id'])
+        weight = 1
+        if d.get('retweeted_status', None) is not None:
+            relationship = 0
+            n_rt_user_id = Utils.hash(d['retweeted_status']['user']['id'])
+            e_rt = n_user_id, n_rt_user_id, weight, relationship
+            o.append(e_rt)
+        if d.get('hashtagEntities', None) is not None:
+            relationship = 1
+            n_ht = d['hashtagEntities'].lower().split('|') if isinstance(d['hashtagEntities'], str) else []
+            ht = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_ht]
+            o.extend(ht)
+        if d.get('hashtagEntities', None) is not None:
+            relationship = 2
+            ht_combinations = Utils.combinations_list(d['hashtagEntities'].lower().split('|')) if isinstance(d['hashtagEntities'], str) else []
+            e_hts = [(x[0], x[1], weight, relationship) for x in ht_combinations]
+            o.extend(e_hts)
+        if d.get('in_reply_to_user_id', -1) != -1:
+            relationship = 3
+            n_reply_user_id = Utils.hash(d['in_reply_to_user_id'])
+            e_reply = n_user_id, n_reply_user_id, weight, relationship
+            o.append(e_reply)
+        if d.get('userMentionEntities', None) is not None:
+            relationship = 4
+            n_mentions = d['userMentionEntities'].lower().split('|') if isinstance(d['userMentionEntities'], str) else []
+            e_mentions = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_mentions]
+            o.extend(e_mentions)
+        return o
 
     def generate_date_chunks(self, start_date, end_date, delta):
         """
@@ -87,12 +108,13 @@ class GraphGeneration:
         where_f = {'$and': [where, d]}
 
         # Retrieve documents in batches
-        cursor = c.find(where_f, project).sort('created_at', ASCENDING).limit(100000).batch_size(batch_size)
+        cursor = c.find(where_f, project).sort('created_at', ASCENDING).limit(5000).batch_size(batch_size)
 
         for document in cursor:
             # Process the document here (you can modify this to suit your needs)
             print(f"Process {process_id} processing document ID: {document['id']}")
-            e_rt = self.relationship_retweet(document)
+
+            e_rt = self.process_document(document)
             shared_list.append(e_rt)
 
     def query_data_in_chunks(self, where, project, num_processes=os.cpu_count(), batch_size=1000):
@@ -125,6 +147,10 @@ class GraphGeneration:
 
             # Convert the shared list to a regular list (for convenience)
             results = list(shared_list)
+            print("LIST RESULtS")
+            print(results)
+        print("FINAL")
+        print(results)
         return results
 
     def query(self, where=None, project=None, batch_size=100):
