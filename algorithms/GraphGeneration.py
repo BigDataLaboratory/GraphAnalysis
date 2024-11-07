@@ -112,8 +112,6 @@ class GraphGeneration:
 
         for document in cursor:
             # Process the document here (you can modify this to suit your needs)
-            print(f"Process {process_id} processing document ID: {document['id']}")
-
             edges = self.process_document(document)
             for item in edges:
                 key = (item[0], item[1], item[3])  # key = (first, second, fourth)
@@ -150,8 +148,6 @@ class GraphGeneration:
             for process in processes:
                 process.join()
             result = [(k[0], k[1], v, k[2]) for k, v in shared_list.items()]
-        print("FINAL")
-        print(result)
         return result
 
     def query(self, where=None, project=None, batch_size=100):

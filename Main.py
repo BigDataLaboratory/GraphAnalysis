@@ -76,41 +76,13 @@ class GraphAnalysis:
             """
             tweets = raw_data.query_data_in_chunks(w, s)
 
+            import csv
+            with open('"{}/{}".format(self.parameters.output_graph_path, self.parameters.output_multi_graph_path)', 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerows(tweets)
+            """
             multigraph_instance = Multigraph(tweets)
             map_instance = Map(tweets)
-
-            # Graph generation
-            graph_list = []
-            if self.parameters.do_retweet_graph:
-                retweet = multigraph_instance.relationship_retweet()
-                if retweet is not None:
-                    Utils.persist_to_file(retweet, "{}/{}".format(self.parameters.output_graph_path,
-                                                                  self.parameters.output_retweet_graph_path))
-                    graph_list.append(retweet)
-            if self.parameters.do_hashtag_graph:
-                hashtag = multigraph_instance.relationship_hashtag()
-                if hashtag is not None:
-                    Utils.persist_to_file(hashtag, "{}/{}".format(self.parameters.output_graph_path,
-                                                                  self.parameters.output_hashtag_graph_path))
-                    graph_list.append(hashtag)
-            if self.parameters.do_hashtag_cooccurrences_graph:
-                cooccurrences = multigraph_instance.relationship_cooccurences()
-                if cooccurrences is not None:
-                    Utils.persist_to_file(cooccurrences, "{}/{}".format(self.parameters.output_graph_path,
-                                                                        self.parameters.output_hashtag_cooccurrences_graph_path))
-                    graph_list.append(cooccurrences)
-            if self.parameters.do_response_graph:
-                reply = multigraph_instance.relationship_responses()
-                if reply is not None:
-                    Utils.persist_to_file(reply, "{}/{}".format(self.parameters.output_graph_path,
-                                                                self.parameters.output_response_graph_path))
-                    graph_list.append(reply)
-            if self.parameters.do_mention_graph:
-                mention = multigraph_instance.relationship_mentions()
-                if mention is not None:
-                    Utils.persist_to_file(mention, "{}/{}".format(self.parameters.output_graph_path,
-                                                                  self.parameters.output_mention_graph_path))
-                    graph_list.append(mention)
 
             # Map generation
             user_map = map_instance.user_id_hashtable()
@@ -137,6 +109,7 @@ class GraphAnalysis:
             #multigraph = multigraph_instance.gen_multigraph(graph_list)
             #Utils.persist_to_file(multigraph, "{}/{}".format(self.parameters.output_graph_path,
             #                                                self.parameters.output_multi_graph_path))
+            """
             multigraph = None
 
         # Community detection

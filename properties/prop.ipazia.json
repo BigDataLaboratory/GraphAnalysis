@@ -15,9 +15,9 @@
           "authName": "twitter",
           "authMechanism": "SCRAM-SHA-1",
           "db_name": "twitter",
-          "collection": "QCPS_2",
-          "chunk_start_date": "01/04/2022",
-          "chunk_end_date": "30/04/2022"
+          "collection": "QCPS_streaming",
+          "chunk_start_date": "01/11/2020",
+          "chunk_end_date": "01/04/2021"
         }
     },
       "graph_type": {
