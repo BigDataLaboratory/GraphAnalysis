@@ -108,7 +108,7 @@ class GraphGeneration:
         where_f = {'$and': [where, d]}
 
         # Retrieve documents in batches
-        cursor = c.find(where_f, project).sort('created_at', ASCENDING).limit(500).batch_size(batch_size)
+        cursor = c.find(where_f, project).sort('created_at', ASCENDING).batch_size(batch_size)
 
         for document in cursor:
             # Process the document here (you can modify this to suit your needs)
