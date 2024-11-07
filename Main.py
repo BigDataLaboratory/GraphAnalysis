@@ -77,7 +77,7 @@ class GraphAnalysis:
             tweets = raw_data.query_data_in_chunks(w, s)
 
             import csv
-            with open('"{}/{}".format(self.parameters.output_graph_path, self.parameters.output_multi_graph_path)', 'w', newline='') as f:
+            with open('{}/{}'.format(self.parameters.output_graph_path, self.parameters.output_multi_graph_path), 'w', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerows(tweets)
             """
