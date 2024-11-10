@@ -143,7 +143,7 @@ class GraphGeneration:
         Save intermediate results to a checkpoint file.
         """
         with open("/ipazianas/pasquini/output_graph_analysis/temp/{}".format(checkpoint_file), 'a') as f:
-            json.dump(intermediate_results)
+            json.dumps(intermediate_results)
 
 
     def worker_process(self, where, project, chunk, batch_size, checkpoint_interval, checkpoint_file):
