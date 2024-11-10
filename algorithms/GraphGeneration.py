@@ -73,7 +73,7 @@ class GraphGeneration:
             n_rt_tweet_id = Utils.hash(d['retweeted_status']['id'])
             a_created_at_tweet = Utils.hash(d['created_at'])
             a_created_at_rt = Utils.hash(d['retweeted_status']['created_at'])
-            e_tweet_retweet = n_tweet_id, n_rt_tweet_id, a_created_at_tweet, a_created_at_rt, relationship_t_rt
+            e_tweet_retweet = n_tweet_id, n_rt_tweet_id, weight, a_created_at_tweet, a_created_at_rt, relationship_t_rt
             o.append(e_tweet_retweet)
 
         if d.get('hashtagEntities', None) is not None:
@@ -143,7 +143,9 @@ class GraphGeneration:
         """
         Save intermediate results to a checkpoint file.
         """
-        result = [(k[0], k[1], v, k[2]) for k, v in intermediate_results.items()]
+        result = []
+        for k, v in intermediate_results.items():
+            result.append([key for key in k].append(v))
         with open("/ipazianas/pasquini/output_graph_analysis/temp/{}".format(checkpoint_file), 'a',
                   newline='') as f:
             writer = csv.writer(f)
@@ -170,7 +172,7 @@ class GraphGeneration:
         for i, document in enumerate(cursor, 1):
             edges = self.process_document(document)
             for item in edges:
-                key = (item[0], item[1], item[3])  # key = (first, second, fourth)
+                key = (item[0], item[1], item[-1]) if item[-1] != 1 else (item[1], item[-1]) # key = (first, second, last)
                 if key not in intermediate_result:
                     intermediate_result[key] = 0
                 intermediate_result[key] += item[2]  # Sum the third element
