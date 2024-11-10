@@ -145,7 +145,7 @@ class GraphGeneration:
         """
         result = []
         for k, v in intermediate_results.items():
-            if k[2] == 1:
+            if k[2] != 1:
                 result.append((k[2], k[0], k[1], v))
             else:
                 result.append((k[2], k[0], k[1], v[0], v[1]))
@@ -181,7 +181,6 @@ class GraphGeneration:
                     intermediate_result[key] += item[2]  # Sum the third element
                 else:
                     intermediate_result[key] = item[2:-1]
-                    print(intermediate_result)
             # Save checkpoint after every `checkpoint_interval` documents
             if i % checkpoint_interval == 0:
                 self.save_checkpoint(intermediate_result, checkpoint_file)
