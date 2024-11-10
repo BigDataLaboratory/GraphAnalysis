@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from Utils.Const import Const as c
 import os
 import numpy as np
+import csv
 
 from Utils.Utils import Utils
 
@@ -142,8 +143,11 @@ class GraphGeneration:
         """
         Save intermediate results to a checkpoint file.
         """
-        with open("/ipazianas/pasquini/output_graph_analysis/temp/{}".format(checkpoint_file), 'a') as f:
-            json.dumps(intermediate_results)
+        result = [(k[0], k[1], v, k[2]) for k, v in intermediate_results.items()]
+        with open("/ipazianas/pasquini/output_graph_analysis/temp/{}".format(checkpoint_file), 'a',
+                  newline='') as f:
+            writer = csv.writer(f)
+            writer.writerows(result)
 
 
     def worker_process(self, where, project, chunk, batch_size, checkpoint_interval, checkpoint_file):
