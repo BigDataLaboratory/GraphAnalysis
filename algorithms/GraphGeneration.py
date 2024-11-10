@@ -143,11 +143,8 @@ class GraphGeneration:
         """
         Save intermediate results to a checkpoint file.
         """
-        result = []
-        for k, v in intermediate_results.items():
-            result.append([key for key in k].append(v))
-        with open("/ipazianas/pasquini/output_graph_analysis/temp/{}".format(checkpoint_file), 'a',
-                  newline='') as f:
+        result = [(k[0], k[1], k[2], v) for k, v in intermediate_results.items()]
+        with open("/ipazianas/pasquini/output_graph_analysis/temp/{}".format(checkpoint_file), 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerows(result)
 
@@ -172,14 +169,17 @@ class GraphGeneration:
         for i, document in enumerate(cursor, 1):
             edges = self.process_document(document)
             for item in edges:
-                key = (item[0], item[1], item[-1]) if item[-1] != 1 else (item[1], item[-1]) # key = (first, second, last)
-                if key not in intermediate_result:
-                    intermediate_result[key] = 0
-                intermediate_result[key] += item[2]  # Sum the third element
-                # Save checkpoint after every `checkpoint_interval` documents
+                key = (item[0], item[1], item[-1])
+                if item[-1] != 1:
+                    if key not in intermediate_result:
+                        intermediate_result[key] = 0
+                    intermediate_result[key] += item[2]  # Sum the third element
+                else:
+                    intermediate_result[key] = item[2:-1]
+            # Save checkpoint after every `checkpoint_interval` documents
             if i % checkpoint_interval == 0:
                 self.save_checkpoint(intermediate_result, checkpoint_file)
-                intermediate_results = {}  # Clear after saving to checkpoint
+                intermediate_result = {}
         # Final save for any remaining results
         if intermediate_result:
             self.save_checkpoint(intermediate_result, checkpoint_file)
@@ -195,7 +195,7 @@ class GraphGeneration:
 
         # Define checkpoint file per worker
         for i, chunk in enumerate(chunks):
-            checkpoint_file = f'checkpoint_worker_{i}.json'  # Each worker has its own checkpoint file
+            checkpoint_file = f'checkpoint_worker_{i}.csv'  # Each worker has its own checkpoint file
             process = multiprocessing.Process(target=self.worker_process, args=(where, project, chunk, batch_size, checkpoint_interval, checkpoint_file))
             processes.append(process)
             process.start()
