@@ -28,14 +28,21 @@ class GraphAnalysis:
     def run(self):
         if self.parameters.do_graph_generation:
             raw_data = GraphGeneration(uri=self.parameters.source_uri,
-                               username=self.parameters.source_username,
-                               password=self.parameters.source_password,
-                               auth_source=self.parameters.source_auth_source,
-                               auth_mechanism=self.parameters.source_auth_mechanism,
-                               collection=self.parameters.source_collection,
-                               start_date=self.parameters.source_chunk_start_date,
-                               end_date=self.parameters.source_chunk_end_date,
-                               input_type=self.parameters.source_input_type)
+                                       username=self.parameters.source_username,
+                                       password=self.parameters.source_password,
+                                       auth_source=self.parameters.source_auth_source,
+                                       auth_mechanism=self.parameters.source_auth_mechanism,
+                                       collection=self.parameters.source_collection,
+                                       start_date=self.parameters.source_chunk_start_date,
+                                       end_date=self.parameters.source_chunk_end_date,
+                                       input_type=self.parameters.source_input_type,
+                                       output_file_path=self.parameters.output_graph_path,
+                                       retweet=self.parameters.do_retweet_graph,
+                                       tweet_retweet=self.parameters.do_retweet_graph,
+                                       user_hashtag=self.parameters.do_hashtag_graph,
+                                       hashtag_cooccurrences=self.parameters.do_hashtag_cooccurrences_graph,
+                                       response=self.parameters.do_response_graph,
+                                       mention=self.parameters.do_mention_graph)
 
             raw_data.connect(self.parameters.source_db_name)
 
@@ -76,11 +83,7 @@ class GraphAnalysis:
             """
             tweets = raw_data.query_data_in_chunks(w, s)
 
-            """import csv
-            with open('{}/{}'.format(self.parameters.output_graph_path, self.parameters.output_multi_graph_path), 'w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerows(tweets)
-            """"""
+            """
             multigraph_instance = Multigraph(tweets)
             map_instance = Map(tweets)
 
@@ -135,7 +138,7 @@ class GraphAnalysis:
             else:
                 user_map = pd.read_csv(self.parameters.user_map, sep=",", header=0)
                 retweet_user_map = pd.read_csv(self.parameters.retweet_user_map, sep=",", header=0)
-                u_map = pd.concat([user_map[["original", "node_hash"]], retweet_user_map[["original", "node_hash"]]])\
+                u_map = pd.concat([user_map[["original", "node_hash"]], retweet_user_map[["original", "node_hash"]]]) \
                     .drop_duplicates(ignore_index=True)
 
             indexes = self.parameters.community_indexes if self.parameters.community_indexes else []
@@ -208,7 +211,7 @@ class GraphAnalysis:
             text_with_topics = pd.concat([result, tp], axis=1)
             di = tm.get_document_info(result["text"].values.tolist())
 
-            Utils.persist_to_file(text_with_topics, self.parameters.topics_file_path+"1234")
+            Utils.persist_to_file(text_with_topics, self.parameters.topics_file_path + "1234")
             Utils.persist_to_file(tm.get_topic_info(), self.parameters.topics_file_path)
             Utils.persist_to_file(di, self.parameters.docs_file_path)
             tm.save(self.parameters.model_path, serialization=self.parameters.model_serialization, save_ctfidf=True)

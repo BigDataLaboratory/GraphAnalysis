@@ -10,14 +10,21 @@ from Utils.Const import Const as c
 import os
 import numpy as np
 import csv
+import uuid
+import logging
 
 from Utils.Utils import Utils
 
+logger = logging.getLogger('GraphGeneration')
+
 
 class GraphGeneration:
+    checkpoint_folder = "checkpoint_tmp_"
 
     def __init__(self, uri, username=None, password=None, auth_source=None, auth_mechanism=None, db=None,
-                 collection=None, start_date=None, end_date=None, input_type="mongo"):
+                 collection=None, start_date=None, end_date=None, input_type="mongo", output_file_path=None,
+                 retweet=False, tweet_retweet=False, user_hashtag=False, hashtag_cooccurrences=False, response=False,
+                 mention=False):
         self.uri = uri
         self.username = username
         self.password = password
@@ -28,6 +35,14 @@ class GraphGeneration:
         self.start_date = start_date
         self.end_date = end_date
         self.type = input_type
+        self.output_file_path = output_file_path
+        self.id = uuid.uuid1().hex
+        self.retweet = retweet
+        self.tweet_retweet = tweet_retweet
+        self.user_hashtag = user_hashtag
+        self.hashtag_cooccurrences = hashtag_cooccurrences
+        self.response = response
+        self.mention = mention
 
     def connect(self, database_name: str = None):
         if self.db is None and database_name is not None and self.type == c.MONGO:
@@ -61,42 +76,45 @@ class GraphGeneration:
         n_user_id = Utils.hash(d['user']['id'])
         weight = 1
 
-        if d.get('retweeted_status', None) is not None:
+        if d.get('retweeted_status', None) is not None and self.retweet:
             relationship_u_rt = 0
             n_rt_user_id = Utils.hash(d['retweeted_status']['user']['id'])
             e_rt = n_user_id, n_rt_user_id, weight, relationship_u_rt
             o.append(e_rt)
 
-        if d.get('retweeted_status', None) is not None:
+        if d.get('retweeted_status', None) is not None and self.tweet_retweet:
             relationship_t_rt = 1
             n_tweet_id = Utils.hash(d['id'])
             n_rt_tweet_id = Utils.hash(d['retweeted_status']['id'])
             a_created_at_tweet = d['created_at'].timestamp()
             a_created_at_rt = d['retweeted_status']['created_at'].timestamp()
-            e_tweet_retweet = (n_tweet_id, n_rt_tweet_id, weight, (a_created_at_tweet, a_created_at_rt), relationship_t_rt)
+            e_tweet_retweet = (
+            n_tweet_id, n_rt_tweet_id, weight, (a_created_at_tweet, a_created_at_rt), relationship_t_rt)
             o.append(e_tweet_retweet)
 
-        if d.get('hashtagEntities', None) is not None:
+        if d.get('hashtagEntities', None) is not None and self.user_hashtag:
             relationship = 2
             n_ht = d['hashtagEntities'].lower().split('|') if isinstance(d['hashtagEntities'], str) else []
             ht = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_ht]
             o.extend(ht)
 
-        if d.get('hashtagEntities', None) is not None:
+        if d.get('hashtagEntities', None) is not None and self.hashtag_cooccurrences:
             relationship = 3
-            ht_combinations = Utils.combinations_list(d['hashtagEntities'].lower().split('|')) if isinstance(d['hashtagEntities'], str) else []
+            ht_combinations = Utils.combinations_list(d['hashtagEntities'].lower().split('|')) if isinstance(
+                d['hashtagEntities'], str) else []
             e_hts = [(x[0], x[1], weight, relationship) for x in ht_combinations]
             o.extend(e_hts)
 
-        if d.get('in_reply_to_user_id', -1) != -1:
+        if d.get('in_reply_to_user_id', -1) != -1 and self.response:
             relationship = 4
             n_reply_user_id = Utils.hash(d['in_reply_to_user_id'])
             e_reply = n_user_id, n_reply_user_id, weight, relationship
             o.append(e_reply)
 
-        if d.get('userMentionEntities', None) is not None:
+        if d.get('userMentionEntities', None) is not None and self.mention:
             relationship = 5
-            n_mentions = d['userMentionEntities'].lower().split('|') if isinstance(d['userMentionEntities'], str) else []
+            n_mentions = d['userMentionEntities'].lower().split('|') if isinstance(d['userMentionEntities'],
+                                                                                   str) else []
             e_mentions = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_mentions]
             o.extend(e_mentions)
 
@@ -139,7 +157,7 @@ class GraphGeneration:
                 shared_list[key] += item[2]  # Sum the third element
     """
 
-    def save_checkpoint(self, intermediate_results, checkpoint_file):
+    def save_checkpoint(self, intermediate_results, process_id):
         """
         Save intermediate results to a checkpoint file.
         """
@@ -149,12 +167,12 @@ class GraphGeneration:
                 result.append((k[2], k[0], k[1], v))
             else:
                 result.append((k[2], k[0], k[1], v[0], v[1]))
-        with open("/ipazianas/pasquini/output_graph_analysis/temp/{}".format(checkpoint_file), 'a', newline='') as f:
+        with open("{}/{}{}_{}".format(self.output_file_path + self.checkpoint_folder + self.id, self.checkpoint_folder,
+                                      self.id, process_id), 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerows(result)
 
-
-    def worker_process(self, where, project, chunk, batch_size, checkpoint_interval, checkpoint_file):
+    def worker_process(self, where, project, chunk, batch_size, checkpoint_interval, process_id):
         """
         Worker function to process a chunk of data from MongoDB.
         """
@@ -183,11 +201,22 @@ class GraphGeneration:
                     intermediate_result[key] = item[2:-1]
             # Save checkpoint after every `checkpoint_interval` documents
             if i % checkpoint_interval == 0:
-                self.save_checkpoint(intermediate_result, checkpoint_file)
+                self.save_checkpoint(intermediate_result, process_id)
                 intermediate_result = {}
         # Final save for any remaining results
         if intermediate_result:
-            self.save_checkpoint(intermediate_result, checkpoint_file)
+            self.save_checkpoint(intermediate_result, process_id)
+
+    def check_dirs(self):
+        if not os.path.exists(self.output_file_path):
+            os.makedirs(self.output_file_path)
+            logger.debug("Specified output file path doesn't exist. Created folder @ {}", self.output_file_path)
+        else:
+            logger.debug("Output file path exists")
+            if not os.path.exists(self.output_file_path + self.checkpoint_folder + self.id):
+                os.makedirs(self.output_file_path + self.checkpoint_folder + self.id)
+                logger.debug("Checkpoints temporary dir doesn't exist. Created folder @ {}",
+                             self.output_file_path + self.checkpoint_folder + self.id)
 
     def query_data_in_chunks(self, where, project, batch_size=500, checkpoint_interval=100):
         """
@@ -198,10 +227,12 @@ class GraphGeneration:
         chunks = list(self.generate_date_chunks(self.start_date, self.end_date, delta))
         processes = []
 
+        self.check_dirs()
+
         # Define checkpoint file per worker
         for i, chunk in enumerate(chunks):
-            checkpoint_file = f'checkpoint_worker_{i}.csv'  # Each worker has its own checkpoint file
-            process = multiprocessing.Process(target=self.worker_process, args=(where, project, chunk, batch_size, checkpoint_interval, checkpoint_file))
+            process = multiprocessing.Process(target=self.worker_process,
+                                              args=(where, project, chunk, batch_size, checkpoint_interval, i))
             processes.append(process)
             process.start()
 
@@ -242,6 +273,7 @@ class GraphGeneration:
             result = [(k[0], k[1], v, k[2]) for k, v in shared_list.items()]
         return result
     """
+
     def query(self, where=None, project=None, batch_size=100):
         if self.type == c.MONGO:
             for batch in self.collection.find(where, project, batch_size=batch_size):
