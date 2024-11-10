@@ -71,9 +71,9 @@ class GraphGeneration:
             relationship_t_rt = 1
             n_tweet_id = Utils.hash(d['id'])
             n_rt_tweet_id = Utils.hash(d['retweeted_status']['id'])
-            a_created_at_tweet = Utils.hash(d['created_at'])
-            a_created_at_rt = Utils.hash(d['retweeted_status']['created_at'])
-            e_tweet_retweet = n_tweet_id, n_rt_tweet_id, weight, a_created_at_tweet, a_created_at_rt, relationship_t_rt
+            a_created_at_tweet = d['created_at'].timestamp()
+            a_created_at_rt = d['retweeted_status']['created_at'].timestamp()
+            e_tweet_retweet = (n_tweet_id, n_rt_tweet_id, weight, (a_created_at_tweet, a_created_at_rt), relationship_t_rt)
             o.append(e_tweet_retweet)
 
         if d.get('hashtagEntities', None) is not None:
@@ -143,7 +143,12 @@ class GraphGeneration:
         """
         Save intermediate results to a checkpoint file.
         """
-        result = [(k[0], k[1], k[2], v) for k, v in intermediate_results.items()]
+        result = []
+        for k, v in intermediate_results.items():
+            if k[2] == 1:
+                result.append((k[2], k[0], k[1], v))
+            else:
+                result.append((k[2], k[0], k[1], v[0], v[1]))
         with open("/ipazianas/pasquini/output_graph_analysis/temp/{}".format(checkpoint_file), 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerows(result)
