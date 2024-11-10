@@ -76,11 +76,11 @@ class GraphAnalysis:
             """
             tweets = raw_data.query_data_in_chunks(w, s)
 
-            import csv
+            """import csv
             with open('{}/{}'.format(self.parameters.output_graph_path, self.parameters.output_multi_graph_path), 'w', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerows(tweets)
-            """
+            """"""
             multigraph_instance = Multigraph(tweets)
             map_instance = Map(tweets)
 

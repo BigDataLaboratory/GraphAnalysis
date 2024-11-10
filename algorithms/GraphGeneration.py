@@ -8,6 +8,7 @@ import multiprocessing
 from datetime import datetime, timedelta
 from Utils.Const import Const as c
 import os
+import numpy as np
 
 from Utils.Utils import Utils
 
@@ -55,33 +56,49 @@ class GraphGeneration:
 
     def process_document(self, d):
         o = []
+        map = []
         n_user_id = Utils.hash(d['user']['id'])
         weight = 1
+
         if d.get('retweeted_status', None) is not None:
-            relationship = 0
+            relationship_u_rt = 0
             n_rt_user_id = Utils.hash(d['retweeted_status']['user']['id'])
-            e_rt = n_user_id, n_rt_user_id, weight, relationship
+            e_rt = n_user_id, n_rt_user_id, weight, relationship_u_rt
             o.append(e_rt)
+
+        if d.get('retweeted_status', None) is not None:
+            relationship_t_rt = 1
+            n_tweet_id = Utils.hash(d['id'])
+            n_rt_tweet_id = Utils.hash(d['retweeted_status']['id'])
+            a_created_at_tweet = Utils.hash(d['created_at'])
+            a_created_at_rt = Utils.hash(d['retweeted_status']['created_at'])
+            e_tweet_retweet = n_tweet_id, n_rt_tweet_id, a_created_at_tweet, a_created_at_rt, relationship_t_rt
+            o.append(e_tweet_retweet)
+
         if d.get('hashtagEntities', None) is not None:
-            relationship = 1
+            relationship = 2
             n_ht = d['hashtagEntities'].lower().split('|') if isinstance(d['hashtagEntities'], str) else []
             ht = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_ht]
             o.extend(ht)
+
         if d.get('hashtagEntities', None) is not None:
-            relationship = 2
+            relationship = 3
             ht_combinations = Utils.combinations_list(d['hashtagEntities'].lower().split('|')) if isinstance(d['hashtagEntities'], str) else []
             e_hts = [(x[0], x[1], weight, relationship) for x in ht_combinations]
             o.extend(e_hts)
+
         if d.get('in_reply_to_user_id', -1) != -1:
-            relationship = 3
+            relationship = 4
             n_reply_user_id = Utils.hash(d['in_reply_to_user_id'])
             e_reply = n_user_id, n_reply_user_id, weight, relationship
             o.append(e_reply)
+
         if d.get('userMentionEntities', None) is not None:
-            relationship = 4
+            relationship = 5
             n_mentions = d['userMentionEntities'].lower().split('|') if isinstance(d['userMentionEntities'], str) else []
             e_mentions = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_mentions]
             o.extend(e_mentions)
+
         return o
 
     def generate_date_chunks(self, start_date, end_date, delta):
@@ -94,10 +111,11 @@ class GraphGeneration:
             yield current_date, next_date
             current_date = next_date
 
+    """
     def worker_process(self, where, project, chunk, batch_size, process_id, shared_list):
-        """
-        Worker function to process a chunk of data from MongoDB.
-        """
+        """"""
+        #Worker function to process a chunk of data from MongoDB.
+        """"""
         db = self.get_db()
         c = db[self.get_collection()]
 
@@ -118,11 +136,75 @@ class GraphGeneration:
                 if key not in shared_list:
                     shared_list[key] = 0
                 shared_list[key] += item[2]  # Sum the third element
+    """
 
-    def query_data_in_chunks(self, where, project, num_processes=os.cpu_count(), batch_size=500):
+    def save_checkpoint(self, intermediate_results, checkpoint_file):
+        """
+        Save intermediate results to a checkpoint file.
+        """
+        with open("/ipazianas/pasquini/output_graph_analysis/temp/{}".format(checkpoint_file), 'a') as f:
+            for result in intermediate_results:
+                f.write(json.dumps(result) + '\n')
+
+    def worker_process(self, where, project, chunk, batch_size, checkpoint_interval, checkpoint_file):
+        """
+        Worker function to process a chunk of data from MongoDB.
+        """
+        db = self.get_db()
+        c = db[self.get_collection()]
+
+        start_id, end_id = chunk
+
+        # Create the query filter for the chunk
+        d = {"created_at": {"$gte": start_id, "$lt": end_id}}
+        where_f = {'$and': [where, d]}
+
+        # Retrieve documents in batches
+        cursor = c.find(where_f, project).sort('created_at', ASCENDING).limit(100000).batch_size(batch_size)
+
+        intermediate_result = {}
+        for i, document in enumerate(cursor, 1):
+            edges = self.process_document(document)
+            for item in edges:
+                key = (item[0], item[1], item[3])  # key = (first, second, fourth)
+                if key not in intermediate_result:
+                    intermediate_result[key] = 0
+                intermediate_result[key] += item[2]  # Sum the third element
+                # Save checkpoint after every `checkpoint_interval` documents
+            if i % checkpoint_interval == 0:
+                self.save_checkpoint(intermediate_result, checkpoint_file)
+                intermediate_results = {}  # Clear after saving to checkpoint
+        # Final save for any remaining results
+        if intermediate_result:
+            self.save_checkpoint(intermediate_result, checkpoint_file)
+
+    def query_data_in_chunks(self, where, project, batch_size=500, checkpoint_interval=500):
         """
         Distribute MongoDB query processing across multiple processes using chunked processing.
         """
+        # Generate chunks based on the collection's create_at field
+        delta = timedelta(weeks=1)
+        chunks = list(self.generate_date_chunks(self.start_date, self.end_date, delta))
+        processes = []
+
+        # Define checkpoint file per worker
+        for i, chunk in enumerate(chunks):
+            checkpoint_file = f'checkpoint_worker_{i}.json'  # Each worker has its own checkpoint file
+            process = multiprocessing.Process(target=self.worker_process, args=(where, project, chunk, batch_size, checkpoint_interval, checkpoint_file))
+            processes.append(process)
+            process.start()
+
+        # Wait for all worker processes to complete
+        for process in processes:
+            process.join()
+
+        print("All data processed and intermediate results saved in checkpoint files.")
+
+    """
+    def query_data_in_chunks(self, where, project, num_processes=os.cpu_count(), batch_size=500):
+        """"""
+        Distribute MongoDB query processing across multiple processes using chunked processing.
+        """"""
         # Generate chunks based on the collection's create_at field
         delta = timedelta(weeks=1)
         chunks = list(self.generate_date_chunks(self.start_date, self.end_date, delta))
@@ -148,7 +230,7 @@ class GraphGeneration:
                 process.join()
             result = [(k[0], k[1], v, k[2]) for k, v in shared_list.items()]
         return result
-
+    """
     def query(self, where=None, project=None, batch_size=100):
         if self.type == c.MONGO:
             for batch in self.collection.find(where, project, batch_size=batch_size):
