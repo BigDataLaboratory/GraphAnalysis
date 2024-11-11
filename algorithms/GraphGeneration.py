@@ -14,7 +14,6 @@ import uuid
 import logging
 
 from Utils.Utils import Utils
-from Utils import Const as c
 
 logger = logging.getLogger('GraphGeneration')
 
