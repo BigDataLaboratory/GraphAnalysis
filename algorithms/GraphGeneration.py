@@ -1,4 +1,7 @@
+import glob
 import json
+from collections import defaultdict
+from enum import Enum
 
 import pandas as pd
 import pymongo.errors
@@ -18,8 +21,22 @@ from Utils.Utils import Utils
 logger = logging.getLogger('GraphGeneration')
 
 
+class GraphType(Enum):
+    retweet = 0
+    tweet_retweet = 1
+    user_hashtag = 2
+    hashtag_cooccurrences = 3
+    response = 4
+    mention = 5
+
+class MapType(Enum):
+    user_id = 0
+    user_retweeted_id = 1
+    tweet_id = 2
+    hashtag = 3
+
 class GraphGeneration:
-    checkpoint_folder = "checkpoint_tmp_"
+    checkpoint_folder = "tmp_"
 
     def __init__(self, uri, username=None, password=None, auth_source=None, auth_mechanism=None, db=None,
                  collection=None, start_date=None, end_date=None, input_type="mongo", output_file_path=None,
@@ -164,25 +181,73 @@ class GraphGeneration:
                 shared_list[key] += item[2]  # Sum the third element
     """
 
+    def load_checkpoint_file(self, file_path):
+        """Load a checkpoint file and return rows as a list of tuples."""
+        with open(file_path, mode='r', newline='', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            return [list(row) for row in reader]
+
+    def merge_and_aggregate_checkpoints(self):
+        """
+        Merges checkpoint files from a folder, aggregates by the first two elements,
+        and writes the final result to a single output file. Deletes each checkpoint file after processing.
+        """
+        checkpoint_folder = self.output_file_path + self.checkpoint_folder + self.id
+        # Iterate over all checkpoint files in the folder
+        for graph_type in GraphType:
+            aggregated_results = defaultdict(lambda: [0, []])  # Structure: { (key1, key2): [sum_third, hashtag_list] }
+            for file_path in glob.glob(f"{checkpoint_folder}/{self.checkpoint_folder}{self.id}_{graph_type.name}_*"):
+                checkpoint_data = self.load_checkpoint_file(file_path)
+                # Aggregate each row
+                if graph_type.name != "tweet_retweet":
+                    for row in checkpoint_data:
+                        key = (row[0], row[1], row[2])
+                        aggregated_results[key][0] += row[3]
+            final_result_graph = []
+            for k, v in aggregated_results:
+                final_result_graph.append((k[0], k[1], k[2], v)) if k[0] != GraphType(k[0]).value else final_result_graph.append((k[0], k[1], k[2], v[0], v[1]))
+            with open("{}/{}_{}".format(self.output_file_path, self.id, graph_type.name), 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerows(final_result_graph)
+
+        # Iterate over all checkpoint files in the folder
+        for map_type in MapType:
+            map_files = glob.glob(f"{checkpoint_folder}/{self.checkpoint_folder}{self.id}_{map_type.name}_{c.MAP}_*")
+            with open("{}/{}_{}".format(self.output_file_path, self.id, map_type.name), 'a', newline='', encoding='utf-8') as outfile:
+                writer = None  # Initialize writer variable
+                for i, file_path in enumerate(map_files):
+                    with open(file_path, mode='r', newline='', encoding='utf-8') as infile:
+                        reader = csv.reader(infile)
+                        headers = next(reader)  # Read headers
+
+                        writer = csv.writer(outfile)
+                        # Write rows from each file to the output file
+                        writer.writerows(row for row in reader)
+
     def save_checkpoint(self, intermediate_results, intermediate_map, process_id):
         """
         Save intermediate results to a checkpoint file.
         """
-        result = []
+        result_graph = {"retweet": [], "tweet_retweet": [], "user_hashtag": [], "hashtag_cooccurrences": [], "response": [], "mention": []}
+        result_map = {"user_id": [], "user_retweeted_id": [], "tweet_id": [], "hashtag": []}
         for k, v in intermediate_results.items():
-            if k[2] != 1:
-                result.append((k[2], k[0], k[1], v))
-            else:
-                result.append((k[2], k[0], k[1], v[0], v[1]))
-        with open("{}/{}{}_{}".format(self.output_file_path + self.checkpoint_folder + self.id, self.checkpoint_folder,
-                                      self.id, process_id), 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerows(result)
+            result_graph[GraphType(k[2]).name].append((k[2], k[0], k[1], v)) if k[2] != 1 else result_graph[GraphType(k[2]).name].append((k[2], k[0], k[1], v[0], v[1]))
+
+        for e in intermediate_map:
+            result_map[MapType(e[2]).name].append(e)
+
+        for k in result_graph:
+            with open("{}/{}{}_{}_{}".format(self.output_file_path + self.checkpoint_folder + self.id, self.checkpoint_folder,
+                                          self.id, k, process_id), 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerows(result_graph[k])
         # Convert and write JSON object to file
-        with open("{}/{}{}_{}_{}".format(self.output_file_path + self.checkpoint_folder + self.id, self.checkpoint_folder,
-                                      self.id, c.MAP, process_id), "a", newline='') as f:
-            writer = csv.writer(f)
-            writer.writerows(intermediate_map)
+
+        for k in result_map:
+            with open("{}/{}{}_{}_{}_{}".format(self.output_file_path + self.checkpoint_folder + self.id, self.checkpoint_folder,
+                                          self.id, k, c.MAP, process_id), "a", newline='') as f:
+                writer = csv.writer(f)
+                writer.writerows(result_map[k])
 
     def worker_process(self, where, project, chunk, batch_size, checkpoint_interval, process_id):
         """
@@ -256,6 +321,7 @@ class GraphGeneration:
         for process in processes:
             process.join()
 
+        self.merge_and_aggregate_checkpoints()
         print("All data processed and intermediate results saved in checkpoint files.")
 
     """
