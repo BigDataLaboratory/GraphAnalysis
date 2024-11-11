@@ -201,7 +201,7 @@ class GraphGeneration:
                 # Aggregate each row
                 if graph_type.name != "tweet_retweet":
                     for row in checkpoint_data:
-                        key = (row[0], row[1], row[2])
+                        key = (int(row[0]), int(row[1]), int(row[2]))
                         aggregated_results[key][0] += int(row[3])
             final_result_graph = []
             for k, v in aggregated_results.items():
