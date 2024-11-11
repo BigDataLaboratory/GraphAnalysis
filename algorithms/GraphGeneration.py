@@ -14,6 +14,7 @@ import uuid
 import logging
 
 from Utils.Utils import Utils
+from Utils import Const as c
 
 logger = logging.getLogger('GraphGeneration')
 
@@ -72,8 +73,9 @@ class GraphGeneration:
 
     def process_document(self, d):
         o = []
-        map = []
+        m = {}
         n_user_id = Utils.hash(d['user']['id'])
+        m[(n_user_id, 0)] = d['user']['id']
         weight = 1
 
         if d.get('retweeted_status', None) is not None and self.retweet:
@@ -82,6 +84,8 @@ class GraphGeneration:
             e_rt = n_user_id, n_rt_user_id, weight, relationship_u_rt
             o.append(e_rt)
 
+            m[(n_rt_user_id, 1)] = d['retweeted_status']['user']['id']
+
         if d.get('retweeted_status', None) is not None and self.tweet_retweet:
             relationship_t_rt = 1
             n_tweet_id = Utils.hash(d['id'])
@@ -89,14 +93,21 @@ class GraphGeneration:
             a_created_at_tweet = d['created_at'].timestamp()
             a_created_at_rt = d['retweeted_status']['created_at'].timestamp()
             e_tweet_retweet = (
-            n_tweet_id, n_rt_tweet_id, weight, (a_created_at_tweet, a_created_at_rt), relationship_t_rt)
+                n_tweet_id, n_rt_tweet_id, weight, (a_created_at_tweet, a_created_at_rt), relationship_t_rt)
             o.append(e_tweet_retweet)
+
+            m[(n_tweet_id, 2)] = d['id']
+            m[(n_tweet_id, 2)] = d['retweeted_status']['id']
 
         if d.get('hashtagEntities', None) is not None and self.user_hashtag:
             relationship = 2
             n_ht = d['hashtagEntities'].lower().split('|') if isinstance(d['hashtagEntities'], str) else []
             ht = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_ht]
+            ht = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_ht]
             o.extend(ht)
+
+            for x in n_ht:
+                m[(Utils.compute_hash(x), 3)] = x
 
         if d.get('hashtagEntities', None) is not None and self.hashtag_cooccurrences:
             relationship = 3
@@ -118,7 +129,7 @@ class GraphGeneration:
             e_mentions = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_mentions]
             o.extend(e_mentions)
 
-        return o
+        return o, m
 
     def generate_date_chunks(self, start_date, end_date, delta):
         """
@@ -157,7 +168,7 @@ class GraphGeneration:
                 shared_list[key] += item[2]  # Sum the third element
     """
 
-    def save_checkpoint(self, intermediate_results, process_id):
+    def save_checkpoint(self, intermediate_results, intermediate_map, process_id):
         """
         Save intermediate results to a checkpoint file.
         """
@@ -171,6 +182,10 @@ class GraphGeneration:
                                       self.id, process_id), 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerows(result)
+        # Convert and write JSON object to file
+        with open("{}/{}{}_{}_{}".format(self.output_file_path + self.checkpoint_folder + self.id, self.checkpoint_folder,
+                                      self.id, c.MAP, process_id), "a", newline='\n') as outfile:
+            json.dump(intermediate_map, outfile)
 
     def worker_process(self, where, project, chunk, batch_size, checkpoint_interval, process_id):
         """
@@ -189,8 +204,9 @@ class GraphGeneration:
         cursor = c.find(where_f, project).sort('created_at', ASCENDING).limit(100000).batch_size(batch_size)
 
         intermediate_result = {}
+        intermediate_map = {}
         for i, document in enumerate(cursor, 1):
-            edges = self.process_document(document)
+            edges, maps = self.process_document(document)
             for item in edges:
                 key = (item[0], item[1], item[-1])
                 if item[-1] != 1:
@@ -199,10 +215,14 @@ class GraphGeneration:
                     intermediate_result[key] += item[2]  # Sum the third element
                 else:
                     intermediate_result[key] = item[2:-1]
+            for key, value in maps.items():
+                if key not in intermediate_map:
+                    intermediate_map = value
             # Save checkpoint after every `checkpoint_interval` documents
             if i % checkpoint_interval == 0:
-                self.save_checkpoint(intermediate_result, process_id)
+                self.save_checkpoint(intermediate_result, intermediate_map, process_id)
                 intermediate_result = {}
+                intermediate_map = {}
         # Final save for any remaining results
         if intermediate_result:
             self.save_checkpoint(intermediate_result, process_id)
