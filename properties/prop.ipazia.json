@@ -22,7 +22,7 @@
     },
       "graph_type": {
         "retweet": true,
-        "user_hashtag": false,
+        "user_hashtag": true,
         "response": false,
         "mention": false,
         "hashtag_cooccurrences": false
