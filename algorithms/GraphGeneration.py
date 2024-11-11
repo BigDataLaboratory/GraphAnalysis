@@ -204,7 +204,7 @@ class GraphGeneration:
                         key = (row[0], row[1], row[2])
                         aggregated_results[key][0] += int(row[3])
             final_result_graph = []
-            for k, v in aggregated_results:
+            for k, v in aggregated_results.items():
                 final_result_graph.append((k[0], k[1], k[2], v)) if k[0] != GraphType(k[0]).value else final_result_graph.append((k[0], k[1], k[2], v[0], v[1]))
             with open("{}/{}_{}".format(self.output_file_path, self.id, graph_type.name), 'a', newline='') as f:
                 writer = csv.writer(f)
@@ -273,7 +273,7 @@ class GraphGeneration:
         where_f = {'$and': [where, d]}
 
         # Retrieve documents in batches
-        cursor = c.find(where_f, project).sort('created_at', ASCENDING).limit(100000).batch_size(batch_size)
+        cursor = c.find(where_f, project).sort('created_at', ASCENDING).limit(10000).batch_size(batch_size)
 
         intermediate_result = {}
         intermediate_map = set()
