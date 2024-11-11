@@ -72,9 +72,10 @@ class GraphGeneration:
 
     def process_document(self, d):
         o = []
-        m = {}
+        m = set()
         n_user_id = Utils.hash(d['user']['id'])
-        m[(n_user_id, 0)] = d['user']['id']
+        m.add((d['user']['id'], n_user_id, 0))
+
         weight = 1
 
         if d.get('retweeted_status', None) is not None and self.retweet:
@@ -82,8 +83,7 @@ class GraphGeneration:
             n_rt_user_id = Utils.hash(d['retweeted_status']['user']['id'])
             e_rt = n_user_id, n_rt_user_id, weight, relationship_u_rt
             o.append(e_rt)
-
-            m[(n_rt_user_id, 1)] = d['retweeted_status']['user']['id']
+            m.add((d['retweeted_status']['user']['id'], n_rt_user_id, 1))
 
         if d.get('retweeted_status', None) is not None and self.tweet_retweet:
             relationship_t_rt = 1
@@ -94,19 +94,16 @@ class GraphGeneration:
             e_tweet_retweet = (
                 n_tweet_id, n_rt_tweet_id, weight, (a_created_at_tweet, a_created_at_rt), relationship_t_rt)
             o.append(e_tweet_retweet)
-
-            m[(n_tweet_id, 2)] = d['id']
-            m[(n_tweet_id, 2)] = d['retweeted_status']['id']
+            m.add((d['id'], n_tweet_id, 2))
+            m.add((d['retweeted_status']['id'], n_rt_tweet_id, 2))
 
         if d.get('hashtagEntities', None) is not None and self.user_hashtag:
             relationship = 2
             n_ht = d['hashtagEntities'].lower().split('|') if isinstance(d['hashtagEntities'], str) else []
             ht = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_ht]
-            ht = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_ht]
             o.extend(ht)
-
             for x in n_ht:
-                m[(Utils.compute_hash(x), 3)] = x
+                m.add((x, Utils.compute_hash(x), 3))
 
         if d.get('hashtagEntities', None) is not None and self.hashtag_cooccurrences:
             relationship = 3
@@ -183,8 +180,9 @@ class GraphGeneration:
             writer.writerows(result)
         # Convert and write JSON object to file
         with open("{}/{}{}_{}_{}".format(self.output_file_path + self.checkpoint_folder + self.id, self.checkpoint_folder,
-                                      self.id, c.MAP, process_id), "a", newline='\n') as outfile:
-            json.dump(intermediate_map, outfile)
+                                      self.id, c.MAP, process_id), "a", newline='') as f:
+            writer = csv.writer(f)
+            writer.writerows(intermediate_map)
 
     def worker_process(self, where, project, chunk, batch_size, checkpoint_interval, process_id):
         """
@@ -203,7 +201,7 @@ class GraphGeneration:
         cursor = c.find(where_f, project).sort('created_at', ASCENDING).limit(100000).batch_size(batch_size)
 
         intermediate_result = {}
-        intermediate_map = {}
+        intermediate_map = set()
         for i, document in enumerate(cursor, 1):
             edges, maps = self.process_document(document)
             for item in edges:
@@ -214,17 +212,16 @@ class GraphGeneration:
                     intermediate_result[key] += item[2]  # Sum the third element
                 else:
                     intermediate_result[key] = item[2:-1]
-            for key, value in maps.items():
-                if key not in intermediate_map:
-                    intermediate_map[key] = value
+            for item in maps:
+                intermediate_map.add(item)
             # Save checkpoint after every `checkpoint_interval` documents
             if i % checkpoint_interval == 0:
                 self.save_checkpoint(intermediate_result, intermediate_map, process_id)
                 intermediate_result = {}
-                intermediate_map = {}
+                intermediate_map = set()
         # Final save for any remaining results
         if intermediate_result:
-            self.save_checkpoint(intermediate_result, process_id)
+            self.save_checkpoint(intermediate_result, intermediate_map, process_id)
 
     def check_dirs(self):
         if not os.path.exists(self.output_file_path):
