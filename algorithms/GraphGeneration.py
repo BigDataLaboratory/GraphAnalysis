@@ -216,7 +216,7 @@ class GraphGeneration:
                     intermediate_result[key] = item[2:-1]
             for key, value in maps.items():
                 if key not in intermediate_map:
-                    intermediate_map = value
+                    intermediate_map[key] = value
             # Save checkpoint after every `checkpoint_interval` documents
             if i % checkpoint_interval == 0:
                 self.save_checkpoint(intermediate_result, intermediate_map, process_id)
