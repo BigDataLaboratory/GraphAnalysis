@@ -202,7 +202,7 @@ class GraphGeneration:
                 if graph_type.name != "tweet_retweet":
                     for row in checkpoint_data:
                         key = (row[0], row[1], row[2])
-                        aggregated_results[key][0] += row[3]
+                        aggregated_results[key][0] += int(row[3])
             final_result_graph = []
             for k, v in aggregated_results:
                 final_result_graph.append((k[0], k[1], k[2], v)) if k[0] != GraphType(k[0]).value else final_result_graph.append((k[0], k[1], k[2], v[0], v[1]))
@@ -218,8 +218,6 @@ class GraphGeneration:
                 for i, file_path in enumerate(map_files):
                     with open(file_path, mode='r', newline='', encoding='utf-8') as infile:
                         reader = csv.reader(infile)
-                        headers = next(reader)  # Read headers
-
                         writer = csv.writer(outfile)
                         # Write rows from each file to the output file
                         writer.writerows(row for row in reader)
@@ -240,7 +238,6 @@ class GraphGeneration:
         result_graph = {"retweet": [], "tweet_retweet": [], "user_hashtag": [], "hashtag_cooccurrences": [], "response": [], "mention": []}
         result_map = {"user_id": [], "user_retweeted_id": [], "tweet_id": [], "hashtag": []}
         for k, v in intermediate_results.items():
-            print(k)
             result_graph[GraphType(k[2]).name].append((k[2], k[0], k[1], v)) if k[2] != 1 else result_graph[GraphType(k[2]).name].append((k[2], k[0], k[1], v[0], v[1]))
 
         for e in intermediate_map:
