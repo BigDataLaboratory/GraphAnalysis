@@ -227,21 +227,34 @@ class GraphGeneration:
     def save_checkpoint(self, intermediate_results, intermediate_map, process_id):
         """
         Save intermediate results to a checkpoint file.
+        class GraphType(Enum):
+    retweet = 0
+    tweet_retweet = 1
+    user_hashtag = 2
+    hashtag_cooccurrences = 3
+    response = 4
+    mention = 5
+
+
         """
         result_graph = {"retweet": [], "tweet_retweet": [], "user_hashtag": [], "hashtag_cooccurrences": [], "response": [], "mention": []}
         result_map = {"user_id": [], "user_retweeted_id": [], "tweet_id": [], "hashtag": []}
         for k, v in intermediate_results.items():
+            print(k)
             result_graph[GraphType(k[2]).name].append((k[2], k[0], k[1], v)) if k[2] != 1 else result_graph[GraphType(k[2]).name].append((k[2], k[0], k[1], v[0], v[1]))
 
         for e in intermediate_map:
             result_map[MapType(e[2]).name].append(e)
 
         for k in result_graph:
-            with open("{}/{}{}_{}_{}".format(self.output_file_path + self.checkpoint_folder + self.id, self.checkpoint_folder,
-                                          self.id, k, process_id), 'a', newline='') as f:
+            with open("{}/{}{}_{}_{}".format(self.output_file_path + self.checkpoint_folder + self.id,
+                                             self.checkpoint_folder,
+                                             self.id,
+                                             k,
+                                             process_id),
+                      'a', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerows(result_graph[k])
-        # Convert and write JSON object to file
 
         for k in result_map:
             with open("{}/{}{}_{}_{}_{}".format(self.output_file_path + self.checkpoint_folder + self.id, self.checkpoint_folder,
