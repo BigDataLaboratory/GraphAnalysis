@@ -208,7 +208,10 @@ class GraphGeneration:
                         aggregated_results[key] = eval(row[3])
             final_result_graph = []
             for k, v in aggregated_results.items():
-                final_result_graph.append((k[0], k[1], k[2], v)) if k[0] != GraphType(k[0]).value else final_result_graph.append((k[0], k[1], k[2], v[0], v[1]))
+                if k[0] != 1:
+                    final_result_graph.append((k[0], k[1], k[2], v))
+                else:
+                    final_result_graph.append((k[0], k[1], k[2], v[0], v[1]))
             with open("{}/{}_{}".format(self.output_file_path, self.id, graph_type.name), 'a', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerows(final_result_graph)
