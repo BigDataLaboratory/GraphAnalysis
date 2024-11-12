@@ -21,10 +21,8 @@ class Writer:
         output_folder = os.sep.join([output_path, id])
         if not os.path.exists(checkpoint_folder):
             os.makedirs(checkpoint_folder)
-            logger.debug("Checkpoints temporary dir doesn't exist. Created folder @ {}", checkpoint_folder)
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
-            logger.debug("Output dir doesn't exist. Created folder @ {}", output_folder)
 
     def list_checkpoint_files(self, dir_path):
         return glob.glob(dir_path)
