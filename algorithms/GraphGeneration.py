@@ -235,7 +235,7 @@ class GraphGeneration:
         where_f = {'$and': [where, d]}
 
         # Retrieve documents in batches
-        cursor = c.find(where_f, project).sort('created_at', ASCENDING).limit(10000).batch_size(batch_size)
+        cursor = c.find(where_f, project).sort('created_at', ASCENDING).batch_size(batch_size)
 
         intermediate_result = {}
         intermediate_map = set()

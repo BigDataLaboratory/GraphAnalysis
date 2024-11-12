@@ -191,7 +191,7 @@ def get_properties(file_path="properties/prop.json"):
     return properties
 
 
-def set_logger(filepath, level='INFO'):
+def set_logger(filepath, level='DEBUG'):
     logging.basicConfig(filename=filepath,
                         filemode='w',
                         format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',

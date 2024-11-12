@@ -5,6 +5,7 @@ import csv
 
 logger = logging.getLogger('Writer')
 
+
 class Writer:
 
     def __init__(self):
