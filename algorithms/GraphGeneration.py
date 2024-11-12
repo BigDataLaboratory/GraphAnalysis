@@ -263,7 +263,7 @@ class GraphGeneration:
         if intermediate_result:
             self.save_checkpoint(intermediate_result, intermediate_map, process_id)
 
-    def query_data_in_chunks(self, where, project, batch_size=500, checkpoint_interval=100):
+    def query_data_in_chunks(self, where, project, batch_size=50000, checkpoint_interval=40000):
         """
         Distribute MongoDB query processing across multiple processes using chunked processing.
         """
