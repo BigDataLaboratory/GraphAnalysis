@@ -161,11 +161,11 @@ class GraphGeneration:
         Merges checkpoint files from a folder, aggregates by the first two elements,
         and writes the final result to a single output file. Deletes each checkpoint file after processing.
         """
-        checkpoint_dir = os.sep.join([self.output_file_path, self.checkpoint_folder, str(self.id)])
+        checkpoint_dir = os.sep.join([self.output_file_path, self.checkpoint_folder, self.id])
         # Iterate over all checkpoint files in the folder
         for graph_type in GraphType:
             aggregated_results = defaultdict(lambda: 0)  # Structure: { (key1, key2): sum_third }
-            checkpoint_files = self.sep.join([self.checkpoint_folder, int(self.id), graph_type.name, "*"])
+            checkpoint_files = self.sep.join([self.checkpoint_folder, self.id, graph_type.name, "*"])
 
             list_checkpoint_files = self.w.list_checkpoint_files(os.sep.join([checkpoint_dir, checkpoint_files]))
             for file_path in list_checkpoint_files:
@@ -187,12 +187,12 @@ class GraphGeneration:
                 else:
                     final_result_graph.append((k[0], k[1], k[2], v[0], v[1]))
 
-            merged_file_path = os.sep.join([self.output_file_path, int(self.id), graph_type.name])
+            merged_file_path = os.sep.join([self.output_file_path, self.id, graph_type.name])
             self.w.write_on_csv(merged_file_path, final_result_graph)
 
         # Iterate over all checkpoint files in the folder
         for map_type in MapType:
-            checkpoint_files = self.sep.join([self.checkpoint_folder, int(self.id), map_type.name, c.MAP, "*"])
+            checkpoint_files = self.sep.join([self.checkpoint_folder, self.id, map_type.name, c.MAP, "*"])
             list_map_files = self.w.list_checkpoint_files(os.sep.join([checkpoint_dir, checkpoint_files]))
             merged_file_path = os.sep.join([self.output_file_path, str(self.id), map_type.name])
             for file_path in list_map_files:
@@ -272,7 +272,6 @@ class GraphGeneration:
         chunks = list(self.generate_date_chunks(self.start_date, self.end_date, delta))
         processes = []
 
-        output_path = os.sep.join([self.output_file_path, self.checkpoint_folder, str(self.id)])
         self.w.create_dirs()
 
         # Define checkpoint file per worker
