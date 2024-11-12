@@ -205,7 +205,7 @@ class GraphGeneration:
                 else:
                     for row in checkpoint_data:
                         key = (int(row[0]), int(row[1]), int(row[2]))
-                        aggregated_results[key] = eval(row[3])
+                        aggregated_results[key] = eval(row[4])
             final_result_graph = []
             for k, v in aggregated_results.items():
                 if k[0] != 1:
