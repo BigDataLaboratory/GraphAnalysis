@@ -38,7 +38,7 @@ class GraphAnalysis:
                                        input_type=self.parameters.source_input_type,
                                        output_file_path=self.parameters.output_graph_path,
                                        retweet=self.parameters.do_retweet_graph,
-                                       tweet_retweet=self.parameters.do_retweet_graph,
+                                       tweet_retweet=self.parameters.do_tweet_retweet_graph,
                                        user_hashtag=self.parameters.do_hashtag_graph,
                                        hashtag_cooccurrences=self.parameters.do_hashtag_cooccurrences_graph,
                                        response=self.parameters.do_response_graph,
@@ -262,6 +262,7 @@ if __name__ == '__main__':
     source_chunk_end_date = datetime.strptime(config["chunk_end_date"], '%d/%m/%Y')
 
     do_retweet_graph = prop["graph_generation"]["parameters"]["graph_type"]["retweet"]
+    do_tweet_retweet_graph = prop["graph_generation"]["parameters"]["graph_type"]["tweet_retweet"]
     do_hashtag_graph = prop["graph_generation"]["parameters"]["graph_type"]["user_hashtag"]
     do_hashtag_cooccurrences_graph = prop["graph_generation"]["parameters"]["graph_type"]["hashtag_cooccurrences"]
     do_mention_graph = prop["graph_generation"]["parameters"]["graph_type"]["mention"]
@@ -325,6 +326,7 @@ if __name__ == '__main__':
         "source_chunk_start_date",
         "source_chunk_end_date",
         "do_retweet_graph",
+        "do_tweet_retweet_graph",
         "do_hashtag_graph",
         "do_hashtag_cooccurrences_graph",
         "do_mention_graph",
@@ -377,6 +379,7 @@ if __name__ == '__main__':
                    source_chunk_start_date,
                    source_chunk_end_date,
                    do_retweet_graph,
+                   do_tweet_retweet_graph,
                    do_hashtag_graph,
                    do_hashtag_cooccurrences_graph,
                    do_mention_graph,

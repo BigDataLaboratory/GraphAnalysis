@@ -8,10 +8,9 @@ import pymongo.errors
 from pymongo import MongoClient
 from pymongo import ASCENDING
 import multiprocessing
-from datetime import datetime, timedelta
+from datetime import timedelta
 from Utils.Const import Const as c
 import os
-import numpy as np
 import csv
 import uuid
 import logging
@@ -195,14 +194,18 @@ class GraphGeneration:
         checkpoint_folder = self.output_file_path + self.checkpoint_folder + self.id
         # Iterate over all checkpoint files in the folder
         for graph_type in GraphType:
-            aggregated_results = defaultdict(lambda: [0, []])  # Structure: { (key1, key2): [sum_third, hashtag_list] }
+            aggregated_results = defaultdict()  # Structure: { (key1, key2): sum_third }
             for file_path in glob.glob(f"{checkpoint_folder}/{self.checkpoint_folder}{self.id}_{graph_type.name}_*"):
                 checkpoint_data = self.load_checkpoint_file(file_path)
                 # Aggregate each row
                 if graph_type.name != "tweet_retweet":
                     for row in checkpoint_data:
                         key = (int(row[0]), int(row[1]), int(row[2]))
-                        aggregated_results[key][0] += int(row[3])
+                        aggregated_results[key] += int(row[3])
+                else:
+                    for row in checkpoint_data:
+                        key = (int(row[0]), int(row[1]), int(row[2]))
+                        aggregated_results[key] = eval(row[3])
             final_result_graph = []
             for k, v in aggregated_results.items():
                 final_result_graph.append((k[0], k[1], k[2], v)) if k[0] != GraphType(k[0]).value else final_result_graph.append((k[0], k[1], k[2], v[0], v[1]))
@@ -214,7 +217,6 @@ class GraphGeneration:
         for map_type in MapType:
             map_files = glob.glob(f"{checkpoint_folder}/{self.checkpoint_folder}{self.id}_{map_type.name}_{c.MAP}_*")
             with open("{}/{}_{}".format(self.output_file_path, self.id, map_type.name), 'a', newline='', encoding='utf-8') as outfile:
-                writer = None  # Initialize writer variable
                 for i, file_path in enumerate(map_files):
                     with open(file_path, mode='r', newline='', encoding='utf-8') as infile:
                         reader = csv.reader(infile)
