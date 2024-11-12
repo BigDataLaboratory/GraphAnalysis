@@ -8,17 +8,22 @@ logger = logging.getLogger('Writer')
 class Writer:
 
     def __init__(self, output_path):
-        self.output_path = output_path
+        self.checkpoint_folder = "tmp"
 
     def write_on_csv(self, file_path, rows):
         with open(file_path, 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerows(rows)
 
-    def create_dirs(self):
-        if not os.path.exists(self.output_path):
-            os.makedirs(self.output_path)
-            logger.debug("Checkpoints temporary dir doesn't exist. Created folder @ {}", self.output_path)
+    def create_dirs(self, output_path, id):
+        checkpoint_folder = os.sep.join([output_path, self.checkpoint_folder, id])
+        output_folder = os.sep.join([output_path, id])
+        if not os.path.exists(checkpoint_folder):
+            os.makedirs(checkpoint_folder)
+            logger.debug("Checkpoints temporary dir doesn't exist. Created folder @ {}", checkpoint_folder)
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+            logger.debug("Output dir doesn't exist. Created folder @ {}", output_folder)
 
     def list_checkpoint_files(self, dir_path):
         return glob.glob(dir_path)

@@ -61,7 +61,7 @@ class GraphGeneration:
         self.hashtag_cooccurrences = hashtag_cooccurrences
         self.response = response
         self.mention = mention
-        self.w = Writer(os.sep.join([self.output_file_path, self.checkpoint_folder, str(self.id)]))
+        self.w = Writer()
 
     def connect(self, database_name: str = None):
         if self.db is None and database_name is not None and self.type == c.MONGO:
@@ -272,7 +272,7 @@ class GraphGeneration:
         chunks = list(self.generate_date_chunks(self.start_date, self.end_date, delta))
         processes = []
 
-        self.w.create_dirs()
+        self.w.create_dirs(self.output_file_path, self.id)
 
         # Define checkpoint file per worker
         for i, chunk in enumerate(chunks):
