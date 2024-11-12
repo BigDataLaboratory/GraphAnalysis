@@ -29,7 +29,7 @@
         "hashtag_cooccurrences": false
       },
       "output": {
-        "path": "/ipazianas/pasquini/output_graph_analysis/",
+        "path": "/ipazianas/pasquini/output_graph_analysis",
         "graph_file_name": {
           "retweet": "retweet",
           "mention": "mention",

@@ -1,21 +1,20 @@
-import glob
 import json
+import logging
+import multiprocessing
+import os
+import uuid
 from collections import defaultdict
+from datetime import timedelta
 from enum import Enum
 
 import pandas as pd
 import pymongo.errors
-from pymongo import MongoClient
 from pymongo import ASCENDING
-import multiprocessing
-from datetime import timedelta
-from Utils.Const import Const as c
-import os
-import csv
-import uuid
-import logging
+from pymongo import MongoClient
 
+from Utils.Const import Const as c
 from Utils.Utils import Utils
+from Utils.Writer import Writer
 
 logger = logging.getLogger('GraphGeneration')
 
@@ -28,19 +27,22 @@ class GraphType(Enum):
     response = 4
     mention = 5
 
+
 class MapType(Enum):
     user_id = 0
     user_retweeted_id = 1
     tweet_id = 2
     hashtag = 3
 
+
 class GraphGeneration:
-    checkpoint_folder = "tmp_"
 
     def __init__(self, uri, username=None, password=None, auth_source=None, auth_mechanism=None, db=None,
                  collection=None, start_date=None, end_date=None, input_type="mongo", output_file_path=None,
                  retweet=False, tweet_retweet=False, user_hashtag=False, hashtag_cooccurrences=False, response=False,
                  mention=False):
+        self.checkpoint_folder = "tmp"
+        self.sep = "_"
         self.uri = uri
         self.username = username
         self.password = password
@@ -59,6 +61,7 @@ class GraphGeneration:
         self.hashtag_cooccurrences = hashtag_cooccurrences
         self.response = response
         self.mention = mention
+        self.w = Writer(os.sep.join([self.output_file_path, self.checkpoint_folder, str(self.id)]))
 
     def connect(self, database_name: str = None):
         if self.db is None and database_name is not None and self.type == c.MONGO:
@@ -153,52 +156,22 @@ class GraphGeneration:
             yield current_date, next_date
             current_date = next_date
 
-    """
-    def worker_process(self, where, project, chunk, batch_size, process_id, shared_list):
-        """"""
-        #Worker function to process a chunk of data from MongoDB.
-        """"""
-        db = self.get_db()
-        c = db[self.get_collection()]
-
-        start_id, end_id = chunk
-
-        # Create the query filter for the chunk
-        d = {"created_at": {"$gte": start_id, "$lt": end_id}}
-        where_f = {'$and': [where, d]}
-
-        # Retrieve documents in batches
-        cursor = c.find(where_f, project).sort('created_at', ASCENDING).batch_size(batch_size)
-
-        for document in cursor:
-            # Process the document here (you can modify this to suit your needs)
-            edges = self.process_document(document)
-            for item in edges:
-                key = (item[0], item[1], item[3])  # key = (first, second, fourth)
-                if key not in shared_list:
-                    shared_list[key] = 0
-                shared_list[key] += item[2]  # Sum the third element
-    """
-
-    def load_checkpoint_file(self, file_path):
-        """Load a checkpoint file and return rows as a list of tuples."""
-        with open(file_path, mode='r', newline='', encoding='utf-8') as f:
-            reader = csv.reader(f)
-            return [list(row) for row in reader]
-
     def merge_and_aggregate_checkpoints(self):
         """
         Merges checkpoint files from a folder, aggregates by the first two elements,
         and writes the final result to a single output file. Deletes each checkpoint file after processing.
         """
-        checkpoint_folder = self.output_file_path + self.checkpoint_folder + self.id
+        checkpoint_dir = os.sep.join([self.output_file_path, self.checkpoint_folder, str(self.id)])
         # Iterate over all checkpoint files in the folder
         for graph_type in GraphType:
             aggregated_results = defaultdict(lambda: 0)  # Structure: { (key1, key2): sum_third }
-            for file_path in glob.glob(f"{checkpoint_folder}/{self.checkpoint_folder}{self.id}_{graph_type.name}_*"):
-                checkpoint_data = self.load_checkpoint_file(file_path)
+            checkpoint_files = self.sep.join([self.checkpoint_folder, int(self.id), graph_type.name, "*"])
+
+            list_checkpoint_files = self.w.list_checkpoint_files(os.sep.join([checkpoint_dir, checkpoint_files]))
+            for file_path in list_checkpoint_files:
+                checkpoint_data = self.w.load_checkpoint_file(file_path)
                 # Aggregate each row
-                if graph_type.name != "tweet_retweet":
+                if graph_type.name != GraphType(1).name:
                     for row in checkpoint_data:
                         key = (int(row[0]), int(row[1]), int(row[2]))
                         aggregated_results[key] += int(row[3])
@@ -206,63 +179,47 @@ class GraphGeneration:
                     for row in checkpoint_data:
                         key = (int(row[0]), int(row[1]), int(row[2]))
                         aggregated_results[key] = eval(row[4])
+
             final_result_graph = []
             for k, v in aggregated_results.items():
                 if k[0] != 1:
                     final_result_graph.append((k[0], k[1], k[2], v))
                 else:
                     final_result_graph.append((k[0], k[1], k[2], v[0], v[1]))
-            with open("{}/{}_{}".format(self.output_file_path, self.id, graph_type.name), 'a', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerows(final_result_graph)
+
+            merged_file_path = os.sep.join([self.output_file_path, int(self.id), graph_type.name])
+            self.w.write_on_csv(merged_file_path, final_result_graph)
 
         # Iterate over all checkpoint files in the folder
         for map_type in MapType:
-            map_files = glob.glob(f"{checkpoint_folder}/{self.checkpoint_folder}{self.id}_{map_type.name}_{c.MAP}_*")
-            with open("{}/{}_{}".format(self.output_file_path, self.id, map_type.name), 'a', newline='', encoding='utf-8') as outfile:
-                for i, file_path in enumerate(map_files):
-                    with open(file_path, mode='r', newline='', encoding='utf-8') as infile:
-                        reader = csv.reader(infile)
-                        writer = csv.writer(outfile)
-                        # Write rows from each file to the output file
-                        writer.writerows(row for row in reader)
+            checkpoint_files = self.sep.join([self.checkpoint_folder, int(self.id), map_type.name, c.MAP, "*"])
+            list_map_files = self.w.list_checkpoint_files(os.sep.join([checkpoint_dir, checkpoint_files]))
+            merged_file_path = os.sep.join([self.output_file_path, str(self.id), map_type.name])
+            for file_path in list_map_files:
+                checkpoint_data = self.w.load_checkpoint_file(file_path)
+                self.w.write_on_csv(merged_file_path, checkpoint_data)
 
     def save_checkpoint(self, intermediate_results, intermediate_map, process_id):
-        """
-        Save intermediate results to a checkpoint file.
-        class GraphType(Enum):
-    retweet = 0
-    tweet_retweet = 1
-    user_hashtag = 2
-    hashtag_cooccurrences = 3
-    response = 4
-    mention = 5
+        result_graph = {GraphType(0).name: [], GraphType(1).name: [], GraphType(2).name: [], GraphType(3).name: [],
+                        GraphType(4).name: [], GraphType(5).name: []}
+        result_map = {MapType(0).name: [], MapType(1).name: [], MapType(2).name: [], MapType(3).name: []}
 
-
-        """
-        result_graph = {"retweet": [], "tweet_retweet": [], "user_hashtag": [], "hashtag_cooccurrences": [], "response": [], "mention": []}
-        result_map = {"user_id": [], "user_retweeted_id": [], "tweet_id": [], "hashtag": []}
         for k, v in intermediate_results.items():
-            result_graph[GraphType(k[2]).name].append((k[2], k[0], k[1], v)) if k[2] != 1 else result_graph[GraphType(k[2]).name].append((k[2], k[0], k[1], v[0], v[1]))
+            result_graph[GraphType(k[2]).name].append((k[2], k[0], k[1], v)) if k[2] != 1 else result_graph[
+                GraphType(k[2]).name].append((k[2], k[0], k[1], v[0], v[1]))
 
         for e in intermediate_map:
             result_map[MapType(e[2]).name].append(e)
 
+        dir_path = os.sep.join([self.output_file_path, self.checkpoint_folder, str(self.id)])
         for k in result_graph:
-            with open("{}/{}{}_{}_{}".format(self.output_file_path + self.checkpoint_folder + self.id,
-                                             self.checkpoint_folder,
-                                             self.id,
-                                             k,
-                                             process_id),
-                      'a', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerows(result_graph[k])
-
+            file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), str(process_id)])
+            path = os.sep.join([dir_path, file_path])
+            self.w.write_on_csv(path, result_graph[k])
         for k in result_map:
-            with open("{}/{}{}_{}_{}_{}".format(self.output_file_path + self.checkpoint_folder + self.id, self.checkpoint_folder,
-                                          self.id, k, c.MAP, process_id), "a", newline='') as f:
-                writer = csv.writer(f)
-                writer.writerows(result_map[k])
+            file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), c.MAP, str(process_id)])
+            path = os.sep.join([dir_path, file_path])
+            self.w.write_on_csv(path, result_map[k])
 
     def worker_process(self, where, project, chunk, batch_size, checkpoint_interval, process_id):
         """
@@ -284,6 +241,7 @@ class GraphGeneration:
         intermediate_map = set()
         for i, document in enumerate(cursor, 1):
             edges, maps = self.process_document(document)
+
             for item in edges:
                 key = (item[0], item[1], item[-1])
                 if item[-1] != 1:
@@ -292,8 +250,10 @@ class GraphGeneration:
                     intermediate_result[key] += item[2]  # Sum the third element
                 else:
                     intermediate_result[key] = item[2:-1]
+
             for item in maps:
                 intermediate_map.add(item)
+
             # Save checkpoint after every `checkpoint_interval` documents
             if i % checkpoint_interval == 0:
                 self.save_checkpoint(intermediate_result, intermediate_map, process_id)
@@ -302,17 +262,6 @@ class GraphGeneration:
         # Final save for any remaining results
         if intermediate_result:
             self.save_checkpoint(intermediate_result, intermediate_map, process_id)
-
-    def check_dirs(self):
-        if not os.path.exists(self.output_file_path):
-            os.makedirs(self.output_file_path)
-            logger.debug("Specified output file path doesn't exist. Created folder @ {}", self.output_file_path)
-        else:
-            logger.debug("Output file path exists")
-            if not os.path.exists(self.output_file_path + self.checkpoint_folder + self.id):
-                os.makedirs(self.output_file_path + self.checkpoint_folder + self.id)
-                logger.debug("Checkpoints temporary dir doesn't exist. Created folder @ {}",
-                             self.output_file_path + self.checkpoint_folder + self.id)
 
     def query_data_in_chunks(self, where, project, batch_size=500, checkpoint_interval=100):
         """
@@ -323,7 +272,8 @@ class GraphGeneration:
         chunks = list(self.generate_date_chunks(self.start_date, self.end_date, delta))
         processes = []
 
-        self.check_dirs()
+        output_path = os.sep.join([self.output_file_path, self.checkpoint_folder, str(self.id)])
+        self.w.create_dirs()
 
         # Define checkpoint file per worker
         for i, chunk in enumerate(chunks):
@@ -338,38 +288,6 @@ class GraphGeneration:
 
         self.merge_and_aggregate_checkpoints()
         print("All data processed and intermediate results saved in checkpoint files.")
-
-    """
-    def query_data_in_chunks(self, where, project, num_processes=os.cpu_count(), batch_size=500):
-        """"""
-        Distribute MongoDB query processing across multiple processes using chunked processing.
-        """"""
-        # Generate chunks based on the collection's create_at field
-        delta = timedelta(weeks=1)
-        chunks = list(self.generate_date_chunks(self.start_date, self.end_date, delta))
-
-        with multiprocessing.Manager() as manager:
-            # Prepare to launch processes
-            processes = []
-            shared_list = manager.dict()
-
-            for i, chunk in enumerate(chunks):
-                process = multiprocessing.Process(target=self.worker_process, args=(where, project, chunk, batch_size, i, shared_list))
-                processes.append(process)
-                process.start()
-
-                # If you've reached the max number of processes, wait for them to finish before continuing
-                if len(processes) == num_processes:
-                    for p in processes:
-                        p.join()
-                    processes = []
-
-            # Ensure any remaining processes finish
-            for process in processes:
-                process.join()
-            result = [(k[0], k[1], v, k[2]) for k, v in shared_list.items()]
-        return result
-    """
 
     def query(self, where=None, project=None, batch_size=100):
         if self.type == c.MONGO:

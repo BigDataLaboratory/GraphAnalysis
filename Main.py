@@ -1,19 +1,16 @@
 import argparse
-from collections import namedtuple
-from datetime import datetime
-
-from algorithms.GraphGeneration import GraphGeneration
-from algorithms.Multigraph import Multigraph
-from algorithms.Map import Map
-from pathlib import Path
-from Utils.Utils import Utils
-from algorithms.Leiden import Leiden
-from algorithms.RawData import RawData
-
-import pandas as pd
 import logging
 import os
+from collections import namedtuple
+from datetime import datetime
+from pathlib import Path
 
+import pandas as pd
+
+from Utils.Utils import Utils
+from algorithms.GraphGeneration import GraphGeneration
+from algorithms.Leiden import Leiden
+from algorithms.RawData import RawData
 from algorithms.TopicGenerator import TopicGenerator
 
 os.chdir(Path(__file__).parent)
@@ -27,24 +24,24 @@ class GraphAnalysis:
 
     def run(self):
         if self.parameters.do_graph_generation:
-            raw_data = GraphGeneration(uri=self.parameters.source_uri,
-                                       username=self.parameters.source_username,
-                                       password=self.parameters.source_password,
-                                       auth_source=self.parameters.source_auth_source,
-                                       auth_mechanism=self.parameters.source_auth_mechanism,
-                                       collection=self.parameters.source_collection,
-                                       start_date=self.parameters.source_chunk_start_date,
-                                       end_date=self.parameters.source_chunk_end_date,
-                                       input_type=self.parameters.source_input_type,
-                                       output_file_path=self.parameters.output_graph_path,
-                                       retweet=self.parameters.do_retweet_graph,
-                                       tweet_retweet=self.parameters.do_tweet_retweet_graph,
-                                       user_hashtag=self.parameters.do_hashtag_graph,
-                                       hashtag_cooccurrences=self.parameters.do_hashtag_cooccurrences_graph,
-                                       response=self.parameters.do_response_graph,
-                                       mention=self.parameters.do_mention_graph)
+            gg = GraphGeneration(uri=self.parameters.source_uri,
+                                 username=self.parameters.source_username,
+                                 password=self.parameters.source_password,
+                                 auth_source=self.parameters.source_auth_source,
+                                 auth_mechanism=self.parameters.source_auth_mechanism,
+                                 collection=self.parameters.source_collection,
+                                 start_date=self.parameters.source_chunk_start_date,
+                                 end_date=self.parameters.source_chunk_end_date,
+                                 input_type=self.parameters.source_input_type,
+                                 output_file_path=self.parameters.output_graph_path,
+                                 retweet=self.parameters.do_retweet_graph,
+                                 tweet_retweet=self.parameters.do_tweet_retweet_graph,
+                                 user_hashtag=self.parameters.do_hashtag_graph,
+                                 hashtag_cooccurrences=self.parameters.do_hashtag_cooccurrences_graph,
+                                 response=self.parameters.do_response_graph,
+                                 mention=self.parameters.do_mention_graph)
 
-            raw_data.connect(self.parameters.source_db_name)
+            gg.connect(self.parameters.source_db_name)
 
             """
             use it when mongo is available again
@@ -81,38 +78,8 @@ class GraphAnalysis:
                  'userMentionEntities'
                  ]
             """
-            tweets = raw_data.query_data_in_chunks(w, s)
+            tweets = gg.query_data_in_chunks(w, s)
 
-            """
-            multigraph_instance = Multigraph(tweets)
-            map_instance = Map(tweets)
-
-            # Map generation
-            user_map = map_instance.user_id_hashtable()
-            Utils.persist_to_file(user_map, "{}/{}_user_id".format(self.parameters.output_graph_path,
-                                                                   self.parameters.output_map_prefix))
-            hashtag_map = map_instance.hashtag_hashtable()
-            if hashtag_map is not None:
-                Utils.persist_to_file(hashtag_map, "{}/{}_hashtag".format(self.parameters.output_graph_path,
-                                                                          self.parameters.output_map_prefix))
-            retweet_user_map = map_instance.user_id_retweet_hashtable()
-            if retweet_user_map is not None:
-                Utils.persist_to_file(retweet_user_map, "{}/{}_retweeted_user_id".format(self.parameters.output_graph_path,
-                                                                                     self.parameters.output_map_prefix))
-            user_screen_name_map = map_instance.user_screen_name_hashtable()
-            Utils.persist_to_file(user_screen_name_map,
-                                  "{}/{}_user_screen_name".format(self.parameters.output_graph_path,
-                                                                  self.parameters.output_map_prefix))
-            user_screen_name_user_id_map = map_instance.user_screen_name_user_id_hashtable()
-            Utils.persist_to_file(user_screen_name_user_id_map,
-                                  "{}/{}_user_screen_name_user_id".format(self.parameters.output_graph_path,
-                                                                          self.parameters.output_map_prefix))
-
-            # Multigraph generation
-            #multigraph = multigraph_instance.gen_multigraph(graph_list)
-            #Utils.persist_to_file(multigraph, "{}/{}".format(self.parameters.output_graph_path,
-            #                                                self.parameters.output_multi_graph_path))
-            """
             multigraph = None
 
         # Community detection
