@@ -7,7 +7,7 @@ logger = logging.getLogger('Writer')
 
 class Writer:
 
-    def __init__(self, output_path):
+    def __init__(self):
         self.checkpoint_folder = "tmp"
 
     def write_on_csv(self, file_path, rows):
