@@ -194,7 +194,7 @@ class GraphGeneration:
         checkpoint_folder = self.output_file_path + self.checkpoint_folder + self.id
         # Iterate over all checkpoint files in the folder
         for graph_type in GraphType:
-            aggregated_results = defaultdict()  # Structure: { (key1, key2): sum_third }
+            aggregated_results = defaultdict(lambda: 0)  # Structure: { (key1, key2): sum_third }
             for file_path in glob.glob(f"{checkpoint_folder}/{self.checkpoint_folder}{self.id}_{graph_type.name}_*"):
                 checkpoint_data = self.load_checkpoint_file(file_path)
                 # Aggregate each row
