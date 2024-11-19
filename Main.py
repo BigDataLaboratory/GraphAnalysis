@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from Utils.Utils import Utils
+from algorithms.CommunityText import CommunityText
 from algorithms.GraphGeneration import GraphGeneration
 from algorithms.Leiden import Leiden
 from algorithms.RawData import RawData
@@ -88,15 +89,16 @@ class GraphAnalysis:
             g = leiden_instance.csv_to_igraph(
                 input_csv_graph_file_path=self.parameters.graph_file_path) if self.parameters.do_read_graph_from_file else leiden_instance.csv_to_igraph(
                 dataframe_graph=multigraph)
-            leiden_instance.add_leiden_to_igraph(g)
-            communities = leiden_instance.get_clusters_as_dataframe(g)
-            Utils.persist_to_file(communities, "{}".format(self.parameters.community_output_file_path))
+            g = leiden_instance.compute_pagerank(g)
+            g = leiden_instance.compute_leiden(g)
+            leiden_instance.export_graph(g, self.parameters.community_output_file_path)
 
         # Get text data from raw dataset
         if self.parameters.do_get_text:
+            ct = CommunityText(self.parameters.community_indexes if self.parameters.community_indexes else [])
             # read communities saved on external file
             if self.parameters.do_read_communities_from_file:
-                communities = pd.read_csv(self.parameters.community_file_path, sep=",", header=0)
+                ct.set_comms_file_path(self.parameters.community_file_path)
             else:
                 raise AttributeError("It's not possible to use communities generated at runtime")
             # read map saved on external file
@@ -108,24 +110,7 @@ class GraphAnalysis:
                 u_map = pd.concat([user_map[["original", "node_hash"]], retweet_user_map[["original", "node_hash"]]]) \
                     .drop_duplicates(ignore_index=True)
 
-            indexes = self.parameters.community_indexes if self.parameters.community_indexes else []
-            communities = communities[communities[self.parameters.community_col_name].isin(indexes)]
-
-            merged = communities.merge(u_map, left_on="node_hash",
-                                       right_on="node_hash",
-                                       how="inner")
-
-            u = merged['original'].tolist()
-            u = list(map(int, u))
-
-            raw_data = RawData(self.parameters.source_uri,
-                               self.parameters.source_username,
-                               self.parameters.source_password,
-                               self.parameters.source_auth_source,
-                               self.parameters.source_auth_mechanism,
-                               input_type=self.parameters.td_input_type)
-
-            raw_data.connect(self.parameters.source_db_name)
+            """"""
 
             """
             use it when mongo is available again
@@ -162,11 +147,12 @@ class GraphAnalysis:
             results = collection.aggregate(pipeline)
             """
 
-            result = raw_data.query(None, ['text', 'user.id', 'created_at.$date'])
+            # result = raw_data.query(None, ['text', 'user.id', 'created_at.$date'])
             self.logger.debug("Generated final intermediate result with text data")
 
         if self.parameters.do_topic_builder:
             # BERT Topic
+            """
             topic_generator = TopicGenerator(result["text"].values.tolist())
             tm, t, p = topic_generator.topic_modeling()
 
@@ -182,6 +168,7 @@ class GraphAnalysis:
             Utils.persist_to_file(tm.get_topic_info(), self.parameters.topics_file_path)
             Utils.persist_to_file(di, self.parameters.docs_file_path)
             tm.save(self.parameters.model_path, serialization=self.parameters.model_serialization, save_ctfidf=True)
+            """
 
 
 def get_properties(file_path="properties/prop.json"):

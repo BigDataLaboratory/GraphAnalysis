@@ -1,112 +1,28 @@
-import json
-import logging
 import multiprocessing
-import os
 import uuid
-from collections import defaultdict
 from datetime import timedelta
-from enum import Enum
 
+import pandas as pd
 from pymongo import ASCENDING
 
-from Utils.Const import Const as c
-from Utils.Utils import Utils
 from Utils.Writer import Writer
 from algorithms.MongoConnection import MongoConnection
 
-logger = logging.getLogger('GraphGeneration')
 
+class CommunityText(MongoConnection):
 
-class GraphType(Enum):
-    retweet = 0
-    tweet_retweet = 1
-    user_hashtag = 2
-    hashtag_cooccurrences = 3
-    response = 4
-    mention = 5
-
-
-class MapType(Enum):
-    user_id = 0
-    user_retweeted_id = 1
-    tweet_id = 2
-    hashtag = 3
-
-
-class GraphGeneration(MongoConnection):
-
-    def __init__(self, uri, input_type="mongo", output_file_path=None, retweet=False, tweet_retweet=False,
-                 user_hashtag=False, hashtag_cooccurrences=False, response=False, mention=False):
+    def __init__(self, comms_index, uri):
         super().__init__(uri)
-        self.checkpoint_folder = "tmp"
-        self.sep = "_"
-        self.type = input_type
-        self.output_file_path = output_file_path
+        self.community_file_path = None
+        self.maps_file_path = None
+        self.comms_index = comms_index
         self.id = uuid.uuid1().hex
-        self.retweet = retweet
-        self.tweet_retweet = tweet_retweet
-        self.user_hashtag = user_hashtag
-        self.hashtag_cooccurrences = hashtag_cooccurrences
-        self.response = response
-        self.mention = mention
-        self.w = Writer()
 
-    def process_document(self, d):
-        o = []
-        m = set()
-        n_user_id = Utils.hash(d['user']['id'])
-        m.add((d['user']['id'], n_user_id, 0))
+    def set_comms_file_path(self, file_path):
+        self.community_file_path = file_path
 
-        weight = 1
-
-        if d.get('retweeted_status', None) is not None and self.retweet:
-            relationship_u_rt = 0
-            n_rt_user_id = Utils.hash(d['retweeted_status']['user']['id'])
-            e_rt = n_user_id, n_rt_user_id, weight, relationship_u_rt
-            o.append(e_rt)
-            m.add((d['retweeted_status']['user']['id'], n_rt_user_id, 1))
-
-        if d.get('retweeted_status', None) is not None and self.tweet_retweet:
-            relationship_t_rt = 1
-            n_tweet_id = Utils.hash(d['id'])
-            n_rt_tweet_id = Utils.hash(d['retweeted_status']['id'])
-            a_created_at_tweet = d['created_at'].timestamp()
-            a_created_at_rt = d['retweeted_status']['created_at'].timestamp()
-            e_tweet_retweet = (
-                n_tweet_id, n_rt_tweet_id, weight, (a_created_at_tweet, a_created_at_rt), relationship_t_rt)
-            o.append(e_tweet_retweet)
-            m.add((d['id'], n_tweet_id, 2))
-            m.add((d['retweeted_status']['id'], n_rt_tweet_id, 2))
-
-        if d.get('hashtagEntities', None) is not None and self.user_hashtag:
-            relationship = 2
-            n_ht = d['hashtagEntities'].lower().split('|') if isinstance(d['hashtagEntities'], str) else []
-            ht = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_ht]
-            o.extend(ht)
-            for x in n_ht:
-                m.add((x, Utils.compute_hash(x), 3))
-
-        if d.get('hashtagEntities', None) is not None and self.hashtag_cooccurrences:
-            relationship = 3
-            ht_combinations = Utils.combinations_list(d['hashtagEntities'].lower().split('|')) if isinstance(
-                d['hashtagEntities'], str) else []
-            e_hts = [(x[0], x[1], weight, relationship) for x in ht_combinations]
-            o.extend(e_hts)
-
-        if d.get('in_reply_to_user_id', -1) != -1 and self.response:
-            relationship = 4
-            n_reply_user_id = Utils.hash(d['in_reply_to_user_id'])
-            e_reply = n_user_id, n_reply_user_id, weight, relationship
-            o.append(e_reply)
-
-        if d.get('userMentionEntities', None) is not None and self.mention:
-            relationship = 5
-            n_mentions = d['userMentionEntities'].lower().split('|') if isinstance(d['userMentionEntities'],
-                                                                                   str) else []
-            e_mentions = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_mentions]
-            o.extend(e_mentions)
-
-        return o, m
+    def set_maps(self, maps_file_paths):
+        self.maps_file_path = maps_file_paths
 
     def generate_date_chunks(self, start_date, end_date, delta):
         """
@@ -118,11 +34,27 @@ class GraphGeneration(MongoConnection):
             yield current_date, next_date
             current_date = next_date
 
+    def generate_chunks(self, chunk_size):
+        """
+        Generates ranges of _id values to divide the data into chunks.
+        """
+        db = self.get_db()
+        c = db[self.get_collection()]
+        min_id = c.find_one(sort=[('user.id', ASCENDING)])['user.id']
+        max_id = c.find_one(sort=[('user.id', -1)])['user.id']
+
+        current_id = min_id
+        while current_id < max_id:
+            next_id = current_id + chunk_size
+            yield (current_id, next_id)
+            current_id = next_id
+
+    """
     def merge_and_aggregate_checkpoints(self):
-        """
-        Merges checkpoint files from a folder, aggregates by the first two elements,
-        and writes the final result to a single output file. Deletes each checkpoint file after processing.
-        """
+        
+        #Merges checkpoint files from a folder, aggregates by the first two elements,
+        #and writes the final result to a single output file. Deletes each checkpoint file after processing.
+        
         checkpoint_dir = os.sep.join([self.output_file_path, self.checkpoint_folder, self.id])
         # Iterate over all checkpoint files in the folder
         for graph_type in GraphType:
@@ -160,7 +92,9 @@ class GraphGeneration(MongoConnection):
             for file_path in list_map_files:
                 checkpoint_data = self.w.load_checkpoint_file(file_path)
                 self.w.write_on_csv(merged_file_path, checkpoint_data)
+    """
 
+    """
     def save_checkpoint(self, intermediate_results, intermediate_map, process_id):
         result_graph = {GraphType(0).name: [], GraphType(1).name: [], GraphType(2).name: [], GraphType(3).name: [],
                         GraphType(4).name: [], GraphType(5).name: []}
@@ -183,10 +117,12 @@ class GraphGeneration(MongoConnection):
             path = os.sep.join([dir_path, file_path])
             self.w.write_on_csv(path, result_map[k])
 
+    """
+    """
     def worker_process(self, where, project, chunk, batch_size, checkpoint_interval, process_id):
-        """
-        Worker function to process a chunk of data from MongoDB.
-        """
+        
+        #Worker function to process a chunk of data from MongoDB.
+        
         db = self.get_db()
         c = db[self.get_collection()]
 
@@ -224,17 +160,19 @@ class GraphGeneration(MongoConnection):
         # Final save for any remaining results
         if intermediate_result:
             self.save_checkpoint(intermediate_result, intermediate_map, process_id)
-
-    def query_data_in_chunks(self, where, project, batch_size=50000, checkpoint_interval=40000):
-        """
-        Distribute MongoDB query processing across multiple processes using chunked processing.
-        """
+    """
+    """
+    def query_data_in_chunks(self, where, project, batch_size=500, checkpoint_interval=40000):
+        
+        #Distribute MongoDB query processing across multiple processes using chunked processing.
+        
         # Generate chunks based on the collection's create_at field
-        delta = timedelta(weeks=1)
-        chunks = list(self.generate_date_chunks(self.start_date, self.end_date, delta))
+
+        # Generate chunks based on the collection's _id field
+        chunks = list(self.generate_chunks(batch_size))
         processes = []
 
-        self.w.create_dirs(self.output_file_path, self.id)
+        Writer.create_dirs(self.output_file_path, self.id)
 
         # Define checkpoint file per worker
         for i, chunk in enumerate(chunks):
@@ -249,21 +187,25 @@ class GraphGeneration(MongoConnection):
 
         self.merge_and_aggregate_checkpoints()
         print("All data processed and intermediate results saved in checkpoint files.")
+    """
 
-    """
-    def query(self, where=None, project=None, batch_size=100):
-        if self.type == c.MONGO:
-            for batch in self.collection.find(where, project, batch_size=batch_size):
-                return pd.json_normalize(batch)
-        elif self.type == c.JSON:
-            with open(self.uri, 'r') as file:
-                result = json.load(file)
-            result = pd.json_normalize(result)
-            result = result[project] if project is not None and len(project) > 0 else result
-            result = result.query(where) if where is not None else result
-            return result
-        elif self.type == c.CSV:
-            result = pd.read_csv(self.uri, sep=",", header=0, lineterminator='\n', usecols=project)
-            result = result.query(where) if where is not None else result
-            return result
-    """
+    def get_users_tweet_text(self, column_cluster_position, cols_maps=None, col_comms=None):
+        if col_comms is None:
+            col_comms = ["node_hash", "pr", "community"]
+        if cols_maps is None:
+            cols_maps = ["original", "node_hash", "type"]
+        w = Writer()
+        communities = w.read_csv_files_in_folder_parallel(self.community_file_path, header=True)
+        maps = w.read_csv_files_in_folder_parallel(self.maps_file_path)
+
+        communities_filtered = [tup for tup in communities if tup[column_cluster_position] in self.comms_index]
+
+        maps_df = pd.DataFrame(maps, columns=cols_maps)
+        communities_df = pd.DataFrame(communities_filtered, columns=col_comms)
+
+        merged = communities_df.merge(maps_df, left_on="node_hash",
+                                   right_on="node_hash",
+                                   how="inner")
+
+        u = merged['original'].tolist()
+        u = list(map(int, u))
