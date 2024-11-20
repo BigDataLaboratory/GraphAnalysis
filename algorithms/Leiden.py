@@ -20,7 +20,7 @@ class Leiden:
         self.id = uuid.uuid1().hex
 
     def csv_to_igraph(self, **kwargs):
-        self.logger.info("Caricamento grafo da csv in corso...")
+        self.logger.info("Start loading graph from CSV")
 
         if kwargs.get("input_csv_graph_file_path", None) is not None:
             w = Writer()
@@ -29,7 +29,9 @@ class Leiden:
             graph = kwargs.get("graph", None)
 
         graph[:] = [(src, dst, int(weight), type) for type, src, dst, weight in graph]
-        self.logger.info("Import del grafo in formato iGraph in corso...")
+        self.logger.info("Graph loading from CSV completed")
+
+        self.logger.info("Start converting graph in iGraph format")
         start = time.time()
         # da csv a gml, weight e type attributi degli edge
         data_graph = ig.Graph.TupleList(graph, directed=True, edge_attrs=['weight', 'type'])
@@ -48,26 +50,25 @@ class Leiden:
                 data_graph.vs[edge.target]["type"] = 'h'
 
         end = time.time()
-        self.logger.info('csv importato in formato iGraph!')
+        self.logger.info('Graph successfully converted in iGraph format')
         self.logger.info("Elapsed time: " + str(end - start))
         return data_graph
 
     def compute_pagerank(self, data_graph):
-        self.logger.info("Calcolo del PageRank in corso")
+        self.logger.info("Start computation of PageRank")
         start = time.time()
         data_graph.vs['pagerank'] = data_graph.pagerank(directed=True, weights='weight', implementation="prpack")
         end = time.time()
-        self.logger.info('PageRank completato!')
+        self.logger.info('Computation of PageRank completed!')
         self.logger.info("Elapsed time: " + str(end - start))
-        return data_graph
 
     def compute_leiden(self, data_graph, resolution_parameter_range=(0.1, 1.0)):
-        self.logger.info("Calcolo di Leiden con CPM Quality Function e resolution parameter")
+        self.logger.info("Start Leiden computation")
         for rp in np.linspace(resolution_parameter_range[0], resolution_parameter_range[1], num=10):
             start = time.time()
 
             rp_round = round(rp, 1)
-            self.logger.info("Calcolo di Leiden con CPM Quality Function e resolution parameter = {}".format(rp_round))
+            self.logger.info("Starting Leiden with CPM Quality Function and resolution parameter = {}".format(rp_round))
 
             partition = la.find_partition(data_graph, la.CPMVertexPartition, resolution_parameter=rp_round,
                                           weights='weight',
@@ -75,16 +76,19 @@ class Leiden:
             data_graph.vs["{}".format(rp_round)] = partition.membership
             end = time.time()
             self.logger.info(
-                "Calcolo di Leiden con CPM Quality Function e resolution parameter = {} completato".format(rp_round))
+                "Finished Leiden with CPM Quality Function and resolution parameter = {} completato".format(rp_round))
             self.logger.info("Elapsed time: " + str(end - start))
+            yield rp_round
 
-        return data_graph
+    def export_partition(self, g, resolution_parameter, file_path, attr=None):
+        Writer.create_dir(file_path, self.id)
+        file_path = os.sep.join([file_path, self.id, "communities_rp_{}.csv".format(resolution_parameter)])
+        Writer.export_nodes_with_attributes(g, file_path, attr)
 
     def export_graph(self, g, file_path):
-        w = Writer()
-        w.create_dir(file_path, self.id)
+        Writer.create_dir(file_path, self.id)
         file_path = os.sep.join([file_path, self.id, "nodes_with_communities.csv"])
-        w.export_nodes_with_attributes(g, file_path)
+        Writer.export_nodes_with_attributes(g, file_path)
 
     def get_cluster_nodes(self, g, cluster_num, cluster_type):
         """

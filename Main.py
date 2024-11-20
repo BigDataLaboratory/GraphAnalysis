@@ -89,8 +89,10 @@ class GraphAnalysis:
             g = leiden_instance.csv_to_igraph(
                 input_csv_graph_file_path=self.parameters.graph_file_path) if self.parameters.do_read_graph_from_file else leiden_instance.csv_to_igraph(
                 dataframe_graph=multigraph)
-            g = leiden_instance.compute_pagerank(g)
-            g = leiden_instance.compute_leiden(g)
+            leiden_instance.compute_pagerank(g)
+            rps = leiden_instance.compute_leiden(g)
+            for rp in rps:
+                leiden_instance.export_partition(g, rp, self.parameters.community_output_file_path, ["name", "type", "pagerank", "{}".format(rp)])
             leiden_instance.export_graph(g, self.parameters.community_output_file_path)
 
         # Get text data from raw dataset
@@ -110,8 +112,30 @@ class GraphAnalysis:
                 u_map = pd.concat([user_map[["original", "node_hash"]], retweet_user_map[["original", "node_hash"]]]) \
                     .drop_duplicates(ignore_index=True)
 
-            """"""
-
+            """
+            match = {'$match': {
+                        'user.id': { '$in': u }  # Filter docs based on users list
+                    }}
+            """
+            project = {'$project': {
+                        'text': {
+                            '$cond': {
+                                'if': { '$gt': ['$retweeted_status', None] },  # Check if it is a retweet
+                                'then': '$retweeted_status.text',              # If it is a retweet, get the text field retweeted_status
+                                'else': '$text'                                # else, get the original text field
+                            }
+                        },
+                        '_id': 0,
+                        'user.id': 1,
+                        'created_at': 1,
+                        'type': {
+                            '$cond': {
+                                'if': { '$gt': ['$retweeted_status', None] },  # Check if it is a retweet
+                                'then': 'normal',                              # If it is a retweet, set "normal" to type
+                                'else': 'retweet'                              # else set "retweet"
+                            }
+                        }
+                    }}
             """
             use it when mongo is available again
 
@@ -146,7 +170,7 @@ class GraphAnalysis:
             
             results = collection.aggregate(pipeline)
             """
-
+            ct.get_users_tweet_text(0, project)
             # result = raw_data.query(None, ['text', 'user.id', 'created_at.$date'])
             self.logger.debug("Generated final intermediate result with text data")
 

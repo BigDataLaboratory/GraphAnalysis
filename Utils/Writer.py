@@ -2,16 +2,16 @@ import glob
 import os
 import logging
 import csv
+from Utils.Const import Const as c
 from itertools import chain
 from multiprocessing import Pool
 from multiprocessing import cpu_count
-
 
 class Writer:
     logger = logging.getLogger('Writer')
 
     def __init__(self):
-        self.checkpoint_folder = "tmp"
+        pass
 
     @staticmethod
     def write_on_csv(file_path, rows):
@@ -21,7 +21,7 @@ class Writer:
 
     @staticmethod
     def create_dirs(output_path, uuid):
-        checkpoint_folder = os.sep.join([output_path, self.checkpoint_folder, uuid])
+        checkpoint_folder = os.sep.join([output_path, c.CHECKPOINT_FOLDER, uuid])
         output_folder = os.sep.join([output_path, uuid])
         if not os.path.exists(checkpoint_folder):
             os.makedirs(checkpoint_folder)
@@ -60,9 +60,9 @@ class Writer:
         return [tuple(row) for row in rows if row]  # Keep non-empty rows as an example
 
     @staticmethod
-    def export_nodes_with_attributes(g, file_path):
+    def export_nodes_with_attributes(g, file_path, attr_list=None):
         # Get all attributes for vertices
-        attributes = g.vs.attributes()
+        attributes = g.vs.attributes() if not attr_list else attr_list
 
         # Open the file for writing
         with open(file_path, mode="a", newline="", encoding="utf-8") as file:
@@ -75,6 +75,7 @@ class Writer:
             for vertex in g.vs:
                 row = [vertex.index] + [vertex[attr] for attr in attributes]
                 writer.writerow(row)
+
 
     def process_csv_file(self, file_path, chunk_size, header=False):
         """

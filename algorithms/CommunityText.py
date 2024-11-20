@@ -1,6 +1,6 @@
 import multiprocessing
+import os
 import uuid
-from datetime import timedelta
 
 import pandas as pd
 from pymongo import ASCENDING
@@ -11,8 +11,12 @@ from algorithms.MongoConnection import MongoConnection
 
 class CommunityText(MongoConnection):
 
-    def __init__(self, comms_index, uri):
-        super().__init__(uri)
+    def __init__(self, comms_index, uri, username=None, password=None, auth_source=None, auth_mechanism=None, db=None,
+                 collection=None, start_date=None, end_date=None, output_file_path=None):
+        super().__init__(uri, username, password, auth_source, auth_mechanism, db, collection, start_date, end_date)
+        self.checkpoint_folder = "tmp"
+        self.sep = "_"
+        self.output_file_path = output_file_path
         self.community_file_path = None
         self.maps_file_path = None
         self.comms_index = comms_index
@@ -49,123 +53,63 @@ class CommunityText(MongoConnection):
             yield (current_id, next_id)
             current_id = next_id
 
-    """
     def merge_and_aggregate_checkpoints(self):
-        
-        #Merges checkpoint files from a folder, aggregates by the first two elements,
-        #and writes the final result to a single output file. Deletes each checkpoint file after processing.
-        
+        """
+        Merges checkpoint files from a folder, aggregates by the first two elements,
+        and writes the final result to a single output file. Deletes each checkpoint file after processing.
+        """
+        # Iterate over all checkpoint files in the folder
         checkpoint_dir = os.sep.join([self.output_file_path, self.checkpoint_folder, self.id])
-        # Iterate over all checkpoint files in the folder
-        for graph_type in GraphType:
-            aggregated_results = defaultdict(lambda: 0)  # Structure: { (key1, key2): sum_third }
-            checkpoint_files = self.sep.join([self.checkpoint_folder, self.id, graph_type.name, "*"])
+        checkpoint_files = self.sep.join([self.checkpoint_folder, self.id, "*"])
+        list_map_files = Writer.list_checkpoint_files(os.sep.join([checkpoint_dir, checkpoint_files]))
+        merged_file_path = os.sep.join([self.output_file_path, str(self.id)])
+        for file_path in list_map_files:
+            checkpoint_data = Writer.load_checkpoint_file(file_path)
+            Writer.write_on_csv(merged_file_path, checkpoint_data)
 
-            list_checkpoint_files = self.w.list_checkpoint_files(os.sep.join([checkpoint_dir, checkpoint_files]))
-            for file_path in list_checkpoint_files:
-                checkpoint_data = self.w.load_checkpoint_file(file_path)
-                # Aggregate each row
-                if graph_type.name != GraphType(1).name:
-                    for row in checkpoint_data:
-                        key = (int(row[0]), int(row[1]), int(row[2]))
-                        aggregated_results[key] += int(row[3])
-                else:
-                    for row in checkpoint_data:
-                        key = (int(row[0]), int(row[1]), int(row[2]))
-                        aggregated_results[key] = eval(row[4])
-
-            final_result_graph = []
-            for k, v in aggregated_results.items():
-                if k[0] != 1:
-                    final_result_graph.append((k[0], k[1], k[2], v))
-                else:
-                    final_result_graph.append((k[0], k[1], k[2], v[0], v[1]))
-
-            merged_file_path = os.sep.join([self.output_file_path, self.id, graph_type.name])
-            self.w.write_on_csv(merged_file_path, final_result_graph)
-
-        # Iterate over all checkpoint files in the folder
-        for map_type in MapType:
-            checkpoint_files = self.sep.join([self.checkpoint_folder, self.id, map_type.name, c.MAP, "*"])
-            list_map_files = self.w.list_checkpoint_files(os.sep.join([checkpoint_dir, checkpoint_files]))
-            merged_file_path = os.sep.join([self.output_file_path, str(self.id), map_type.name])
-            for file_path in list_map_files:
-                checkpoint_data = self.w.load_checkpoint_file(file_path)
-                self.w.write_on_csv(merged_file_path, checkpoint_data)
-    """
-
-    """
-    def save_checkpoint(self, intermediate_results, intermediate_map, process_id):
-        result_graph = {GraphType(0).name: [], GraphType(1).name: [], GraphType(2).name: [], GraphType(3).name: [],
-                        GraphType(4).name: [], GraphType(5).name: []}
-        result_map = {MapType(0).name: [], MapType(1).name: [], MapType(2).name: [], MapType(3).name: []}
-
-        for k, v in intermediate_results.items():
-            result_graph[GraphType(k[2]).name].append((k[2], k[0], k[1], v)) if k[2] != 1 else result_graph[
-                GraphType(k[2]).name].append((k[2], k[0], k[1], v[0], v[1]))
-
-        for e in intermediate_map:
-            result_map[MapType(e[2]).name].append(e)
-
+    def save_checkpoint(self, intermediate_results, process_id):
         dir_path = os.sep.join([self.output_file_path, self.checkpoint_folder, str(self.id)])
-        for k in result_graph:
-            file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), str(process_id)])
-            path = os.sep.join([dir_path, file_path])
-            self.w.write_on_csv(path, result_graph[k])
-        for k in result_map:
-            file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), c.MAP, str(process_id)])
-            path = os.sep.join([dir_path, file_path])
-            self.w.write_on_csv(path, result_map[k])
+        file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(process_id)])
+        path = os.sep.join([dir_path, file_path])
+        Writer.write_on_csv(path, intermediate_results)
 
-    """
-    """
-    def worker_process(self, where, project, chunk, batch_size, checkpoint_interval, process_id):
-        
-        #Worker function to process a chunk of data from MongoDB.
-        
+    def process_document(self, d):
+        return d["user"]["id"], d["created_at"], d["type"], d["text"]
+
+    def worker_process(self, match, project, chunk, batch_size, checkpoint_interval, process_id):
+        """
+        Worker function to process a chunk of data from MongoDB.
+        """
         db = self.get_db()
         c = db[self.get_collection()]
 
         start_id, end_id = chunk
 
         # Create the query filter for the chunk
-        d = {"created_at": {"$gte": start_id, "$lt": end_id}}
-        where_f = {'$and': [where, d]}
+        d = {"user.id": {"$gte": start_id, "$lt": end_id}}
+        match["user.id"] = {"$and": [match["$match"]["user.id"], d]}
 
+        pipeline = [match, project]
         # Retrieve documents in batches
-        cursor = c.find(where_f, project).sort('created_at', ASCENDING).batch_size(batch_size)
+        cursor = c.aggregate(pipeline).sort('user.id', ASCENDING).batch_size(batch_size)
 
-        intermediate_result = {}
-        intermediate_map = set()
+        intermediate_result = []
         for i, document in enumerate(cursor, 1):
-            edges, maps = self.process_document(document)
-
-            for item in edges:
-                key = (item[0], item[1], item[-1])
-                if item[-1] != 1:
-                    if key not in intermediate_result:
-                        intermediate_result[key] = 0
-                    intermediate_result[key] += item[2]  # Sum the third element
-                else:
-                    intermediate_result[key] = item[2:-1]
-
-            for item in maps:
-                intermediate_map.add(item)
+            e = self.process_document(document)
+            intermediate_result.append(e)
 
             # Save checkpoint after every `checkpoint_interval` documents
             if i % checkpoint_interval == 0:
-                self.save_checkpoint(intermediate_result, intermediate_map, process_id)
-                intermediate_result = {}
-                intermediate_map = set()
+                self.save_checkpoint(intermediate_result, process_id)
+                intermediate_result = []
         # Final save for any remaining results
         if intermediate_result:
-            self.save_checkpoint(intermediate_result, intermediate_map, process_id)
-    """
-    """
-    def query_data_in_chunks(self, where, project, batch_size=500, checkpoint_interval=40000):
-        
-        #Distribute MongoDB query processing across multiple processes using chunked processing.
-        
+            self.save_checkpoint(intermediate_result, process_id)
+
+    def query_data_in_chunks(self, match, project, batch_size=500, checkpoint_interval=40000):
+        """
+        Distribute MongoDB query processing across multiple processes using chunked processing.
+        """
         # Generate chunks based on the collection's create_at field
 
         # Generate chunks based on the collection's _id field
@@ -177,7 +121,7 @@ class CommunityText(MongoConnection):
         # Define checkpoint file per worker
         for i, chunk in enumerate(chunks):
             process = multiprocessing.Process(target=self.worker_process,
-                                              args=(where, project, chunk, batch_size, checkpoint_interval, i))
+                                              args=(match, project, chunk, batch_size, checkpoint_interval, i))
             processes.append(process)
             process.start()
 
@@ -187,9 +131,8 @@ class CommunityText(MongoConnection):
 
         self.merge_and_aggregate_checkpoints()
         print("All data processed and intermediate results saved in checkpoint files.")
-    """
 
-    def get_users_tweet_text(self, column_cluster_position, cols_maps=None, col_comms=None):
+    def get_users_tweet_text(self, column_cluster_position, project, cols_maps=None, col_comms=None):
         if col_comms is None:
             col_comms = ["node_hash", "pr", "community"]
         if cols_maps is None:
@@ -209,3 +152,9 @@ class CommunityText(MongoConnection):
 
         u = merged['original'].tolist()
         u = list(map(int, u))
+
+        match = {'$match': {
+            'user.id': {'$in': u}  # Filter docs based on users list
+        }}
+
+        self.query_data_in_chunks(match, project)

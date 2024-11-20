@@ -7,3 +7,4 @@ class Const(Static):
     JSON = "json"
     CSV = "csv"
     MAP = "map"
+    CHECKPOINT_FOLDER = "tmp"

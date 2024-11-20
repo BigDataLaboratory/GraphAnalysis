@@ -35,9 +35,10 @@ class MapType(Enum):
 
 class GraphGeneration(MongoConnection):
 
-    def __init__(self, uri, input_type="mongo", output_file_path=None, retweet=False, tweet_retweet=False,
+    def __init__(self, uri, username=None, password=None, auth_source=None, auth_mechanism=None, db=None,
+                 collection=None, start_date=None, end_date=None, input_type="mongo", output_file_path=None, retweet=False, tweet_retweet=False,
                  user_hashtag=False, hashtag_cooccurrences=False, response=False, mention=False):
-        super().__init__(uri)
+        super().__init__(uri, username, password, auth_source, auth_mechanism, db, collection, start_date, end_date)
         self.checkpoint_folder = "tmp"
         self.sep = "_"
         self.type = input_type
@@ -129,9 +130,9 @@ class GraphGeneration(MongoConnection):
             aggregated_results = defaultdict(lambda: 0)  # Structure: { (key1, key2): sum_third }
             checkpoint_files = self.sep.join([self.checkpoint_folder, self.id, graph_type.name, "*"])
 
-            list_checkpoint_files = self.w.list_checkpoint_files(os.sep.join([checkpoint_dir, checkpoint_files]))
+            list_checkpoint_files = Writer.list_checkpoint_files(os.sep.join([checkpoint_dir, checkpoint_files]))
             for file_path in list_checkpoint_files:
-                checkpoint_data = self.w.load_checkpoint_file(file_path)
+                checkpoint_data = Writer.load_checkpoint_file(file_path)
                 # Aggregate each row
                 if graph_type.name != GraphType(1).name:
                     for row in checkpoint_data:
@@ -150,16 +151,16 @@ class GraphGeneration(MongoConnection):
                     final_result_graph.append((k[0], k[1], k[2], v[0], v[1]))
 
             merged_file_path = os.sep.join([self.output_file_path, self.id, graph_type.name])
-            self.w.write_on_csv(merged_file_path, final_result_graph)
+            Writer.write_on_csv(merged_file_path, final_result_graph)
 
         # Iterate over all checkpoint files in the folder
         for map_type in MapType:
             checkpoint_files = self.sep.join([self.checkpoint_folder, self.id, map_type.name, c.MAP, "*"])
-            list_map_files = self.w.list_checkpoint_files(os.sep.join([checkpoint_dir, checkpoint_files]))
+            list_map_files = Writer.list_checkpoint_files(os.sep.join([checkpoint_dir, checkpoint_files]))
             merged_file_path = os.sep.join([self.output_file_path, str(self.id), map_type.name])
             for file_path in list_map_files:
-                checkpoint_data = self.w.load_checkpoint_file(file_path)
-                self.w.write_on_csv(merged_file_path, checkpoint_data)
+                checkpoint_data = Writer.load_checkpoint_file(file_path)
+                Writer.write_on_csv(merged_file_path, checkpoint_data)
 
     def save_checkpoint(self, intermediate_results, intermediate_map, process_id):
         result_graph = {GraphType(0).name: [], GraphType(1).name: [], GraphType(2).name: [], GraphType(3).name: [],
@@ -177,11 +178,11 @@ class GraphGeneration(MongoConnection):
         for k in result_graph:
             file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), str(process_id)])
             path = os.sep.join([dir_path, file_path])
-            self.w.write_on_csv(path, result_graph[k])
+            Writer.write_on_csv(path, result_graph[k])
         for k in result_map:
             file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), c.MAP, str(process_id)])
             path = os.sep.join([dir_path, file_path])
-            self.w.write_on_csv(path, result_map[k])
+            Writer.write_on_csv(path, result_map[k])
 
     def worker_process(self, where, project, chunk, batch_size, checkpoint_interval, process_id):
         """
@@ -234,7 +235,7 @@ class GraphGeneration(MongoConnection):
         chunks = list(self.generate_date_chunks(self.start_date, self.end_date, delta))
         processes = []
 
-        self.w.create_dirs(self.output_file_path, self.id)
+        Writer.create_dirs(self.output_file_path, self.id)
 
         # Define checkpoint file per worker
         for i, chunk in enumerate(chunks):
