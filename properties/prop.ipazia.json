@@ -45,11 +45,27 @@
     }
   },
   "community_detection": {
-    "to_execute": false,
     "parameters": {
-      "read_from_file": false,
-      "graph_file_path": ["/ipazianas/pasquini/output_graph_analysis/multigraph_16_10_2024_14_21_07.csv"],
-      "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities"
+      "read_from_file": true,
+      "graph_file_path": [
+        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/mention",
+        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/retweet",
+        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/response",
+        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/user_hashtag",
+        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/hashtag_cooccurrences"
+      ]
+    },
+    "leiden": {
+      "to_execute": true,
+      "parameters": {
+        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden"
+      }
+    },
+    "combo": {
+      "to_execute": true,
+      "parameters": {
+        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_combo"
+      }
     }
   },
   "get_users_text": {

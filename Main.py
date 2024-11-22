@@ -7,12 +7,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from Utils.Utils import Utils
+from Utils.Writer import Writer
 from algorithms.CommunityText import CommunityText
 from algorithms.GraphGeneration import GraphGeneration
-from algorithms.Leiden import Leiden
-from algorithms.RawData import RawData
-from algorithms.TopicGenerator import TopicGenerator
+from community.Combo import Combo
+from community.Leiden import Leiden
 
 os.chdir(Path(__file__).parent)
 
@@ -84,16 +83,26 @@ class GraphAnalysis:
             multigraph = None
 
         # Community detection
-        if self.parameters.do_community_detection:
-            leiden_instance = Leiden()
-            g = leiden_instance.csv_to_igraph(
-                input_csv_graph_file_path=self.parameters.graph_file_path) if self.parameters.do_read_graph_from_file else leiden_instance.csv_to_igraph(
-                dataframe_graph=multigraph)
-            leiden_instance.compute_pagerank(g)
-            rps = leiden_instance.compute_leiden(g)
+        community_detection = self.parameters.do_community_detection_combo or self.parameters.do_community_detection_leiden
+        if community_detection:
+            w = Writer()
+            graph = w.read_csv_files_in_folder_parallel(self.parameters.graph_file_path) if self.parameters.do_read_graph_from_file else multigraph
+        if self.parameters.do_community_detection_combo:
+            combo_instance = Combo()
+            g = combo_instance.csv_to_nx(graph)
+            rps = combo_instance.compute_combo_in_parallel(g)
             for rp in rps:
-                leiden_instance.export_partition(g, rp, self.parameters.community_output_file_path, ["name", "type", "pagerank", "{}".format(rp)])
-            leiden_instance.export_graph(g, self.parameters.community_output_file_path)
+                combo_instance.export_partition(g, rp, self.parameters.community_combo_prop["community_output_file_path"], ["type", "{}".format(rp)])
+            combo_instance.export_graph(g, self.parameters.community_combo_prop["community_output_file_path"])
+
+        if self.parameters.do_community_detection_leiden:
+            leiden_instance = Leiden()
+            g = leiden_instance.csv_to_igraph(graph)
+            leiden_instance.compute_pagerank(g)
+            rps = leiden_instance.compute_leiden_in_parallel(g)
+            for rp in rps:
+                leiden_instance.export_partition(g, rp, self.parameters.community_leiden_prop["community_output_file_path"], ["name", "type", "pagerank", "{}".format(rp)])
+            leiden_instance.export_graph(g, self.parameters.community_leiden_prop["community_output_file_path"])
 
         # Get text data from raw dataset
         if self.parameters.do_get_text:
@@ -223,7 +232,8 @@ if __name__ == '__main__':
 
     set_logger(prop["log"]["filepath"], prop["log"]["level"])
     do_graph_generation = prop["graph_generation"]["to_execute"]
-    do_community_detection = prop["community_detection"]["to_execute"]
+    do_community_detection_leiden = prop["community_detection"]["leiden"]["to_execute"]
+    do_community_detection_combo = prop["community_detection"]["combo"]["to_execute"]
     do_get_text = prop["get_users_text"]["to_execute"]
     do_topic_builder = prop["topic_builder"]["to_execute"]
 
@@ -259,7 +269,8 @@ if __name__ == '__main__':
     community_config = prop["community_detection"]["parameters"]
     do_read_graph_from_file = community_config["read_from_file"]
     graph_file_path = community_config["graph_file_path"]
-    community_output_file_path = community_config["community_output_file_path"]
+    community_combo_prop = prop["community_detection"]["combo"]["parameters"]
+    community_leiden_prop = prop["community_detection"]["leiden"]["parameters"]
 
     users_text_config = prop["get_users_text"]["parameters"]
     community_indexes = users_text_config["communities"]["indexes"]
@@ -290,7 +301,8 @@ if __name__ == '__main__':
 
     Parameters = namedtuple('Parameters', [
         "do_graph_generation",
-        "do_community_detection",
+        "do_community_detection_leiden",
+        "do_community_detection_combo",
         "do_get_text",
         "do_topic_builder",
         "source_input_type",
@@ -319,7 +331,8 @@ if __name__ == '__main__':
         "output_map_prefix",
         "do_read_graph_from_file",
         "graph_file_path",
-        "community_output_file_path",
+        "community_combo_prop",
+        "community_leiden_prop",
         "community_indexes",
         "community_col_name",
         "do_read_communities_from_file",
@@ -343,7 +356,8 @@ if __name__ == '__main__':
     ])
 
     P = Parameters(do_graph_generation,
-                   do_community_detection,
+                   do_community_detection_leiden,
+                   do_community_detection_combo,
                    do_get_text,
                    do_topic_builder,
                    source_input_type,
@@ -372,7 +386,8 @@ if __name__ == '__main__':
                    output_map_prefix,
                    do_read_graph_from_file,
                    graph_file_path,
-                   community_output_file_path,
+                   community_combo_prop,
+                   community_leiden_prop,
                    community_indexes,
                    community_col_name,
                    do_read_communities_from_file,

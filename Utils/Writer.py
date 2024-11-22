@@ -7,6 +7,7 @@ from itertools import chain
 from multiprocessing import Pool
 from multiprocessing import cpu_count
 
+
 class Writer:
     logger = logging.getLogger('Writer')
 
@@ -60,6 +61,27 @@ class Writer:
         return [tuple(row) for row in rows if row]  # Keep non-empty rows as an example
 
     @staticmethod
+    def export_nx_nodes_with_attributes(g, file_path, attr_list=None):
+        attributes = set()
+        if not attr_list:
+            for _, data in g.nodes(data=True):
+                attributes.update(data.keys())
+        else:
+            attributes = attr_list
+
+        # Open the file for writing
+        with open(file_path, mode="a", newline="", encoding="utf-8") as file:
+            writer = csv.writer(file)
+
+            # Write the header (attribute names)
+            writer.writerow(["node"] + [attr for attr in attributes])
+
+            # Write node data
+            for node, data in g.nodes(data=True):
+                row = [node] + [data.get(attr, "null") for attr in attributes]
+                writer.writerow(row)
+
+    @staticmethod
     def export_nodes_with_attributes(g, file_path, attr_list=None):
         # Get all attributes for vertices
         attributes = g.vs.attributes() if not attr_list else attr_list
@@ -75,7 +97,6 @@ class Writer:
             for vertex in g.vs:
                 row = [vertex.index] + [vertex[attr] for attr in attributes]
                 writer.writerow(row)
-
 
     def process_csv_file(self, file_path, chunk_size, header=False):
         """
@@ -103,7 +124,6 @@ class Writer:
             # Process remaining rows
             if rows:
                 processed_data.extend(self.process_chunk(rows))
-        print(processed_data)
         return processed_data
 
     def process_csv_file_parallel(self, args):
@@ -130,8 +150,10 @@ class Writer:
         Returns:
         - Dictionary with filenames as keys and processed data as values.
         """
+        self.logger.info("Start loading graph from CSV in parallel, cpu cores: {}".format(cpu_count()))
+
         args = [(file, chunk_size, header) for file in path]
         with Pool(processes=cpu_count()) as pool:
             results = pool.map(self.process_csv_file_parallel, args)
-
+        self.logger.info("Graph loading from CSV completed")
         return list(chain.from_iterable(results))

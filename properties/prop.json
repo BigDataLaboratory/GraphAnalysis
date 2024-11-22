@@ -45,11 +45,23 @@
     }
   },
   "community_detection": {
-    "to_execute": true,
     "parameters": {
       "read_from_file": true,
-      "graph_file_path": ["/Users/danielepasquini/Downloads/csv_files/retweet_sample.csv"],
-      "community_output_file_path": "./resources/communities"
+      "graph_file_path": [
+        "/Users/danielepasquini/Downloads/csv_files/retweet_sample.csv"
+      ]
+    },
+    "leiden": {
+      "to_execute": true,
+      "parameters": {
+        "community_output_file_path": "./resources/communities_leiden"
+      }
+    },
+    "combo": {
+      "to_execute": true,
+      "parameters": {
+        "community_output_file_path": "./resources/communities_combo"
+      }
     }
   },
   "get_users_text": {

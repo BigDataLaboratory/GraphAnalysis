@@ -1,4 +1,3 @@
-import json
 import logging
 import multiprocessing
 import os
@@ -13,8 +12,6 @@ from Utils.Const import Const as c
 from Utils.Utils import Utils
 from Utils.Writer import Writer
 from algorithms.MongoConnection import MongoConnection
-
-logger = logging.getLogger('GraphGeneration')
 
 
 class GraphType(Enum):
@@ -34,6 +31,7 @@ class MapType(Enum):
 
 
 class GraphGeneration(MongoConnection):
+    logger = logging.getLogger('GraphGeneration')
 
     def __init__(self, uri, username=None, password=None, auth_source=None, auth_mechanism=None, db=None,
                  collection=None, start_date=None, end_date=None, input_type="mongo", output_file_path=None, retweet=False, tweet_retweet=False,
