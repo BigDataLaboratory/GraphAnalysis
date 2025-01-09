@@ -106,7 +106,14 @@ class GraphAnalysis:
 
         # Get text data from raw dataset
         if self.parameters.do_get_text:
-            ct = CommunityText(self.parameters.community_indexes if self.parameters.community_indexes else [])
+            ct = CommunityText(self.parameters.community_indexes if self.parameters.community_indexes else [],
+                                uri=self.parameters.td_uri,
+                                username = self.parameters.td_source_username,
+                                password = self.parameters.td_source_password,
+                                auth_source = self.parameters.td_source_auth_source,
+                                auth_mechanism = self.parameters.td_source_auth_mechanism,
+                                collection = self.parameters.td_source_collection
+                                )
             # read communities saved on external file
             if self.parameters.do_read_communities_from_file:
                 ct.set_comms_file_path(self.parameters.community_file_path)
@@ -277,6 +284,7 @@ if __name__ == '__main__':
     community_col_name = users_text_config["communities"]["community_col_name"]
     do_read_communities_from_file = users_text_config["communities"]["read_communities_from_file"]
     community_file_path = users_text_config["communities"]["community_file_path"]
+
 
     do_read_maps_from_file = users_text_config["map_file_path"]["read_maps_from_file"]
     user_map = users_text_config["map_file_path"]["user_map"]
