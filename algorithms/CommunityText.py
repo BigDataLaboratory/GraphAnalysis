@@ -12,7 +12,7 @@ from algorithms.MongoConnection import MongoConnection
 class CommunityText(MongoConnection):
 
     def __init__(self, comms_index, uri, username=None, password=None, auth_source=None, auth_mechanism=None, db=None,
-                 collection=None, start_date=None, end_date=None, output_file_path=None):
+                 collection=None, start_date=None, end_date=None, output_file_path="/ipazianas/pasquini/output_graph_analysis"):
         super().__init__(uri, username, password, auth_source, auth_mechanism, db, collection, start_date, end_date)
         self.checkpoint_folder = "tmp"
         self.sep = "_"

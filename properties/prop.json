@@ -58,7 +58,7 @@
       }
     },
     "combo": {
-      "to_execute": true,
+      "to_execute": false,
       "parameters": {
         "community_output_file_path": "./resources/communities_combo"
       }

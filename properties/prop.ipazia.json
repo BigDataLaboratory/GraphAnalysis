@@ -4,7 +4,7 @@
     "level": "DEBUG"
   },
   "graph_generation": {
-    "to_execute": true,
+    "to_execute": false,
     "parameters": {
       "input": {
         "type": "mongo",
@@ -56,32 +56,32 @@
       ]
     },
     "leiden": {
-      "to_execute": true,
+      "to_execute": false,
       "parameters": {
         "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden"
       }
     },
     "combo": {
-      "to_execute": true,
+      "to_execute": false,
       "parameters": {
         "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_combo"
       }
     }
   },
   "get_users_text": {
-    "to_execute": false,
+    "to_execute": true,
     "parameters": {
       "communities": {
         "indexes": [],
-        "community_col_name": "cluster3",
+        "community_col_name": "0.6",
         "read_communities_from_file": true,
-        "community_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_16_10_2024_17_09_21.csv"
+        "community_file_path": "/ipazianas/pasquini/output_graph_analysis/communities/f51aba14a75b11efa55808f1eaf4fe18/communities_rp_0.6.csv"
       },
       "map_file_path": {
         "read_maps_from_file": true,
-        "user_map": "/ipazianas/pasquini/output_graph_analysis/map_user_id_16_10_2024_17_09_14.csv",
-        "hashtag_map": "/ipazianas/pasquini/output_graph_analysis/map_hashtag_16_10_2024_17_09_14.csv",
-        "retweet_user_map": "/ipazianas/pasquini/output_graph_analysis/map_retweeted_user_id_16_10_2024_17_09_14.csv"
+        "user_map": "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/user_id",
+        "hashtag_map": "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/hashtag",
+        "retweet_user_map": "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/user_retweeted_id"
       },
       "input": {
         "type": "mongo",
