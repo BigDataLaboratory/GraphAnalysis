@@ -108,11 +108,11 @@ class GraphAnalysis:
         if self.parameters.do_get_text:
             ct = CommunityText(self.parameters.community_indexes if self.parameters.community_indexes else [],
                                 uri=self.parameters.td_uri,
-                                username = self.parameters.td_source_username,
-                                password = self.parameters.td_source_password,
-                                auth_source = self.parameters.td_source_auth_source,
-                                auth_mechanism = self.parameters.td_source_auth_mechanism,
-                                collection = self.parameters.td_source_collection
+                                username = self.parameters.td_username,
+                                password = self.parameters.td_password,
+                                auth_source = self.parameters.td_auth_source,
+                                auth_mechanism = self.parameters.td_auth_mechanism,
+                                collection = self.parameters.td_collection
                                 )
             # read communities saved on external file
             if self.parameters.do_read_communities_from_file:

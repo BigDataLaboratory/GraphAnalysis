@@ -1,5 +1,6 @@
 import pymongo.errors
 from pymongo import MongoClient
+import Utils.Const as c
 
 
 class MongoConnection:
@@ -17,7 +18,7 @@ class MongoConnection:
         self.end_date = end_date
 
     def connect(self, database_name: str = None):
-        if self.db is None and database_name is not None and self.type == c.MONGO:
+        if self.db is None and database_name is not None:
             mongo_client = MongoClient(self.uri,
                                        username=self.username,
                                        password=self.password,
