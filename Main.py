@@ -114,6 +114,7 @@ class GraphAnalysis:
                                 auth_mechanism = self.parameters.td_auth_mechanism,
                                 collection = self.parameters.td_collection
                                 )
+            ct.connect(self.parameters.td_db_name)
             # read communities saved on external file
             if self.parameters.do_read_communities_from_file:
                 ct.set_comms_file_path(self.parameters.community_file_path)
