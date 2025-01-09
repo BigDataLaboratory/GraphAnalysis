@@ -18,7 +18,7 @@ class CommunityText(MongoConnection):
         self.sep = "_"
         self.output_file_path = output_file_path
         self.community_file_path = None
-        self.maps_file_path = None
+        self.maps_file_paths = None
         self.comms_index = comms_index
         self.id = uuid.uuid1().hex
 
@@ -26,7 +26,7 @@ class CommunityText(MongoConnection):
         self.community_file_path = file_path
 
     def set_maps(self, maps_file_paths):
-        self.maps_file_path = maps_file_paths
+        self.maps_file_paths = maps_file_paths
 
     def generate_date_chunks(self, start_date, end_date, delta):
         """
@@ -138,8 +138,8 @@ class CommunityText(MongoConnection):
         if cols_maps is None:
             cols_maps = ["original", "node_hash", "type"]
         w = Writer()
-        communities = w.read_csv_files_in_folder_parallel(self.community_file_path, header=True)
-        maps = w.read_csv_files_in_folder_parallel(self.maps_file_path)
+        communities = w.read_csv_files_in_folder_parallel([self.community_file_path], header=True)
+        maps = w.read_csv_files_in_folder_parallel(self.maps_file_paths)
 
         communities_filtered = [tup for tup in communities if tup[column_cluster_position] in self.comms_index]
 
