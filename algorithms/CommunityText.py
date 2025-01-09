@@ -44,8 +44,8 @@ class CommunityText(MongoConnection):
         """
         db = self.get_db()
         c = db[self.get_collection()]
-        min_id = c.find_one(sort=[('user.id', ASCENDING)])['user.id']
-        max_id = c.find_one(sort=[('user.id', -1)])['user.id']
+        min_id = c.find_one(sort=[('user.id', ASCENDING)])['user']['id']
+        max_id = c.find_one(sort=[('user.id', -1)])['user']['id']
 
         current_id = min_id
         while current_id < max_id:
