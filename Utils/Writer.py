@@ -153,7 +153,7 @@ class Writer:
         self.logger.info("Start loading graph from CSV in parallel, cpu cores: {}".format(cpu_count()))
 
         args = [(file, chunk_size, header) for file in path]
-        with Pool(processes=cpu_count()) as pool:
+        with Pool(processes=4) as pool:
             results = pool.map(self.process_csv_file_parallel, args)
         self.logger.info("Graph loading from CSV completed")
         return list(chain.from_iterable(results))
