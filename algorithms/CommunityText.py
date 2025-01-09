@@ -146,7 +146,7 @@ class CommunityText(MongoConnection):
         maps_df = pd.DataFrame(maps, columns=cols_maps)
         communities_df = pd.DataFrame(communities_filtered, columns=col_comms)
 
-        merged = communities_df.merge(maps_df, left_on="node_hash",
+        merged = communities_df.merge(maps_df, left_on=col_comms[1],
                                    right_on="node_hash",
                                    how="inner")
 

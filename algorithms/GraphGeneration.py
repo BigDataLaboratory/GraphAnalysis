@@ -89,8 +89,10 @@ class GraphGeneration(MongoConnection):
             relationship = 3
             ht_combinations = Utils.combinations_list(d['hashtagEntities'].lower().split('|')) if isinstance(
                 d['hashtagEntities'], str) else []
-            e_hts = [(x[0], x[1], weight, relationship) for x in ht_combinations]
-            o.extend(e_hts)
+            e_hts_natural = [(x[0], x[1], weight, relationship) for x in ht_combinations]
+            e_hts_inverse = [(x[1], x[0], weight, relationship) for x in ht_combinations]
+            o.extend(e_hts_natural)
+            o.extend(e_hts_inverse)
 
         if d.get('in_reply_to_user_id', -1) != -1 and self.response:
             relationship = 4

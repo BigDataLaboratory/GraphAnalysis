@@ -179,7 +179,7 @@ class GraphAnalysis:
             
             results = collection.aggregate(pipeline)
             """
-            ct.get_users_tweet_text(0, project)
+            ct.get_users_tweet_text(0, project, col_comms=["id", "name", "type", "pagerank", "0.6"])
             # result = raw_data.query(None, ['text', 'user.id', 'created_at.$date'])
             self.logger.debug("Generated final intermediate result with text data")
 
