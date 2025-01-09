@@ -120,13 +120,13 @@ class GraphAnalysis:
             else:
                 raise AttributeError("It's not possible to use communities generated at runtime")
             # read map saved on external file
-            if not self.parameters.do_read_maps_from_file:
-                raise AttributeError("It's not possible to use maps generated at runtime")
-            else:
-                user_map = pd.read_csv(self.parameters.user_map, sep=",", header=0)
-                retweet_user_map = pd.read_csv(self.parameters.retweet_user_map, sep=",", header=0)
-                u_map = pd.concat([user_map[["original", "node_hash"]], retweet_user_map[["original", "node_hash"]]]) \
-                    .drop_duplicates(ignore_index=True)
+            # if not self.parameters.do_read_maps_from_file:
+            #     raise AttributeError("It's not possible to use maps generated at runtime")
+            # else:
+            #     user_map = pd.read_csv(self.parameters.user_map, sep=",", header=0)
+            #     retweet_user_map = pd.read_csv(self.parameters.retweet_user_map, sep=",", header=0)
+            #     u_map = pd.concat([user_map[["original", "node_hash"]], retweet_user_map[["original", "node_hash"]]]) \
+            #         .drop_duplicates(ignore_index=True)
 
             """
             match = {'$match': {
