@@ -86,7 +86,7 @@
       "input": {
         "type": "mongo",
         "conf": {
-          "uri": "mongodb://127.0.0.1:27020/",
+          "uri": "mongodb://127.0.0.1:27019/",
           "username": "twitter",
           "password": "twitter",
           "authName": "twitter",

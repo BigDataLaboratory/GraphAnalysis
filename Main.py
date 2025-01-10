@@ -126,10 +126,6 @@ class GraphAnalysis:
             else:
                 maps = [self.parameters.user_map, self.parameters.retweet_user_map]
                 ct.set_maps(maps)
-            #     user_map = pd.read_csv(self.parameters.user_map, sep=",", header=0)
-            #     retweet_user_map = pd.read_csv(self.parameters.retweet_user_map, sep=",", header=0)
-            #     u_map = pd.concat([user_map[["original", "node_hash"]], retweet_user_map[["original", "node_hash"]]]) \
-            #         .drop_duplicates(ignore_index=True)
 
             """
             match = {'$match': {
