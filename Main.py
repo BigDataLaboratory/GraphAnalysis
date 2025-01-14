@@ -5,8 +5,6 @@ from collections import namedtuple
 from datetime import datetime
 from pathlib import Path
 
-import pandas as pd
-
 from Utils.Writer import Writer
 from algorithms.CommunityText import CommunityText
 from algorithms.GraphGeneration import GraphGeneration
@@ -18,6 +16,8 @@ os.chdir(Path(__file__).parent)
 
 class GraphAnalysis:
     logger = logging.getLogger('GraphAnalysis')
+    logging.getLogger('pymongo.command').setLevel(logging.DEBUG)
+    logging.getLogger('pymongo.topology').setLevel(logging.WARNING)
 
     def __init__(self, parameters: namedtuple):
         self.parameters = parameters
@@ -78,15 +78,14 @@ class GraphAnalysis:
                  'userMentionEntities'
                  ]
             """
-            tweets = gg.query_data_in_chunks(w, s)
-
-            multigraph = None
+            gg.query_data_in_chunks(w, s)
 
         # Community detection
         community_detection = self.parameters.do_community_detection_combo or self.parameters.do_community_detection_leiden
         if community_detection:
             w = Writer()
-            graph = w.read_csv_files_in_folder_parallel(self.parameters.graph_file_path) if self.parameters.do_read_graph_from_file else multigraph
+            if self.parameters.do_read_graph_from_file:
+                graph = w.read_csv_files_in_folder_parallel(self.parameters.graph_file_path)
         if self.parameters.do_community_detection_combo:
             combo_instance = Combo()
             g = combo_instance.csv_to_nx(graph)

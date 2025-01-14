@@ -50,9 +50,9 @@ class Combo:
                                                 random_seed=0)
         return resolution_parameter, partition, modularity
 
-    def compute_combo_in_parallel(self, data_graph, resolution_parameter_range=(0.1, 4.0)):
+    def compute_combo_in_parallel(self, data_graph, resolution_parameter_range=(0.1, 1.0)):
         self.logger.info("Start parallel Combo computation for each resolution parameter value")
-        rps = np.linspace(resolution_parameter_range[0], resolution_parameter_range[1], num=4)
+        rps = np.linspace(resolution_parameter_range[0], resolution_parameter_range[1], num=10)
         with concurrent.futures.ProcessPoolExecutor() as executor:
             futures = {executor.submit(self.worker_process, data_graph, round(rp, 1)): rp for rp in rps}
             for future in concurrent.futures.as_completed(futures):

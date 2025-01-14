@@ -1,7 +1,5 @@
 import pymongo.errors
 from pymongo import MongoClient
-import Utils.Const as c
-
 
 class MongoConnection:
 
