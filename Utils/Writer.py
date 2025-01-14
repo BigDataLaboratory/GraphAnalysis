@@ -1,10 +1,10 @@
+import concurrent.futures
 import glob
 import os
 import logging
 import csv
 from Utils.Const import Const as c
 from itertools import chain
-from multiprocessing import Pool
 from multiprocessing import cpu_count
 
 
@@ -150,10 +150,10 @@ class Writer:
         Returns:
         - Dictionary with filenames as keys and processed data as values.
         """
-        self.logger.info("Start loading graph from CSV in parallel, cpu cores: {}".format(cpu_count()))
+        self.logger.info("Start loading graph from CSV in parallel, number of threads: {}".format(30))
 
         args = [(file, chunk_size, header) for file in path]
-        with Pool(processes=cpu_count()-4) as pool:
-            results = pool.map(self.process_csv_file_parallel, args)
+        with concurrent.futures.ThreadPoolExecutor(max_workers = 30) as executor:
+            results = executor.map(self.process_csv_file_parallel, args)
         self.logger.info("Graph loading from CSV completed")
         return list(chain.from_iterable(results))
