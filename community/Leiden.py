@@ -46,10 +46,24 @@ class Leiden:
         return data_graph
 
     def compute_pagerank(self, data_graph):
+        self.logger.info("Start removing nodes of type hashtag")
+        # Specify the type of nodes to exclude
+        exclude_type = "h"
+        # Get the indices of nodes to keep (i.e., nodes not of the excluded type)
+        nodes_to_keep = [v.index for v in data_graph.vs if v["type"] != exclude_type]
+        # Create the subgraph with the selected nodes
+        subgraph = data_graph.induced_subgraph(nodes_to_keep)
         self.logger.info("Start computation of PageRank")
         start = time.time()
-        data_graph.vs['pagerank'] = data_graph.pagerank(directed=True, weights='weight', implementation="prpack")
+        pagerank_values = subgraph.pagerank(directed=True, weights='weight', implementation="prpack")
         end = time.time()
+        # Map the PageRank values back to the original graph
+        # Initialize all PageRank values in the original graph to None
+        data_graph.vs["pagerank"] = [None] * data_graph.vcount()
+        # Copy the PageRank values from the subgraph back to the original graph
+        for subgraph_node, pagerank in zip(subgraph.vs, pagerank_values):
+            original_index = subgraph_node["name"]  # Get the original index from the subgraph
+            data_graph.vs[original_index]["pagerank"] = pagerank
         self.logger.info('Computation of PageRank completed!')
         self.logger.info("Elapsed time: " + str(end - start))
 
