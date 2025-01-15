@@ -46,7 +46,7 @@
   },
   "community_detection": {
     "parameters": {
-      "read_from_file": false,
+      "read_from_file": true,
       "graph_file_path": [
         "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/mention",
         "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/retweet",
@@ -62,7 +62,7 @@
       }
     },
     "combo": {
-      "to_execute": true,
+      "to_execute": false,
       "parameters": {
         "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_combo"
       }
