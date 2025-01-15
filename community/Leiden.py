@@ -62,7 +62,7 @@ class Leiden:
         data_graph.vs["pagerank"] = [None] * data_graph.vcount()
         # Copy the PageRank values from the subgraph back to the original graph
         for subgraph_node, pagerank in zip(subgraph.vs, pagerank_values):
-            original_index = subgraph_node["name"]  # Get the original index from the subgraph
+            original_index = subgraph.vs["name"].index(subgraph_node["name"])  # Get the original index from the subgraph
             data_graph.vs[original_index]["pagerank"] = pagerank
         self.logger.info('Computation of PageRank completed!')
         self.logger.info("Elapsed time: " + str(end - start))

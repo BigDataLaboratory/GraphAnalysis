@@ -48,7 +48,7 @@
     "parameters": {
       "read_from_file": true,
       "graph_file_path": [
-        "/Users/danielepasquini/Downloads/csv_files/retweet_sample.csv"
+        "/Users/danielepasquini/PycharmProjects/GraphAnalysis/resources/sample.csv"
       ]
     },
     "leiden": {
