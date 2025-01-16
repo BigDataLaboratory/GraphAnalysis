@@ -97,10 +97,10 @@ class GraphAnalysis:
         if self.parameters.do_community_detection_leiden:
             leiden_instance = Leiden()
             g = leiden_instance.csv_to_igraph(graph)
-            leiden_instance.compute_pagerank(g)
+            #leiden_instance.compute_pagerank(g)
             rps = leiden_instance.compute_leiden_in_parallel(g)
             for rp in rps:
-                leiden_instance.export_partition(g, rp, self.parameters.community_leiden_prop["community_output_file_path"], ["name", "type", "pagerank", "{}".format(rp)])
+                leiden_instance.export_partition(g, rp, self.parameters.community_leiden_prop["community_output_file_path"], ["name", "type", "{}".format(rp)])
             leiden_instance.export_graph(g, self.parameters.community_leiden_prop["community_output_file_path"])
 
         # Get text data from raw dataset
