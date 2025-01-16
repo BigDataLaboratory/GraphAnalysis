@@ -52,13 +52,13 @@
       ]
     },
     "leiden": {
-      "to_execute": true,
+      "to_execute": false,
       "parameters": {
         "community_output_file_path": "./resources/communities_leiden"
       }
     },
     "combo": {
-      "to_execute": false,
+      "to_execute": true,
       "parameters": {
         "community_output_file_path": "./resources/communities_combo"
       }

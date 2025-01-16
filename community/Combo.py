@@ -46,8 +46,13 @@ class Combo:
         return data_graph
 
     def worker_process(self, g, resolution_parameter):
+        self.logger.info('Start combo computation with resolution parameter {}'.format(resolution_parameter))
+        start = time.time()
         partition, modularity = pycombo.execute(g, weight="weight", modularity_resolution=resolution_parameter,
                                                 random_seed=0)
+        end = time.time()
+        self.logger.info('Created communities with Combo with resolution parameter {}'.format(resolution_parameter))
+        self.logger.info("Elapsed time: " + str(end - start))
         return resolution_parameter, partition, modularity
 
     def compute_combo_in_parallel(self, data_graph, resolution_parameter_range=(0.1, 1.0)):
