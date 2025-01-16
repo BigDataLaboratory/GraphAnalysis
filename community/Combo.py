@@ -4,7 +4,7 @@ import os
 import time
 import uuid
 
-import networkx as nx
+import graphscope.nx as nx
 import numpy as np
 import pycombo as pycombo
 
@@ -20,7 +20,6 @@ class Combo:
     def csv_to_nx(self, graph):
         self.logger.info("Start converting graph in NetworkX format")
         start = time.time()
-        # da csv a gml, weight e type attributi degli edge
 
         data_graph = nx.MultiDiGraph()
 
