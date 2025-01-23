@@ -29,7 +29,7 @@ if __name__ == '__main__':
         prop: dict = get_properties()
 
 
-    setup_logging("logs/logs.log")
+    setup_logging(prop["log"]["filepath"])
     logger = logging.getLogger(__name__)
 
     do_graph_generation = prop["graph_generation"]["to_execute"]
