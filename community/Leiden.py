@@ -76,7 +76,7 @@ class Leiden:
     def compute_leiden_in_parallel(self, data_graph, resolution_parameter_range=(0.1, 1.0)):
         self.logger.info("Start parallel Leiden computation for each resolution parameter value")
         rps = np.linspace(resolution_parameter_range[0], resolution_parameter_range[1], num=10)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = {executor.submit(self.worker_process, data_graph, round(rp, 1)): rp for rp in rps}
             for future in concurrent.futures.as_completed(futures):
                 result = future.result()
