@@ -9,6 +9,7 @@ import numpy as np
 import pycombo as pycombo
 
 from Utils.Writer import Writer
+from Utils.memory_monitor import memory_tracker, log_memory
 
 
 class Combo:
@@ -17,8 +18,9 @@ class Combo:
     def __init__(self):
         self.id = uuid.uuid1().hex
 
+    @memory_tracker
     def csv_to_nx(self, graph):
-        self.logger.info("Start converting graph in NetworkX format")
+        log_memory("Start converting graph in NetworkX format")
         start = time.time()
 
         data_graph = nx.MultiDiGraph()
@@ -40,17 +42,18 @@ class Combo:
                 data_graph.nodes[v]["type"] = 'h'
 
         end = time.time()
-        self.logger.info('Graph successfully converted in NetworkX format')
+        log_memory("Graph successfully converted in NetworkX format")
         self.logger.info("Elapsed time: " + str(end - start))
         return data_graph
 
+    @memory_tracker
     def worker_process(self, g, resolution_parameter):
-        self.logger.info('Start combo computation with resolution parameter {}'.format(resolution_parameter))
+        log_memory('Start combo computation with resolution parameter {}'.format(resolution_parameter))
         start = time.time()
         partition, modularity = pycombo.execute(g, weight="weight", modularity_resolution=resolution_parameter,
                                                 random_seed=0)
         end = time.time()
-        self.logger.info('Created communities with Combo with resolution parameter {}'.format(resolution_parameter))
+        log_memory('Created communities with Combo with resolution parameter {}'.format(resolution_parameter))
         self.logger.info("Elapsed time: " + str(end - start))
         return resolution_parameter, partition, modularity
 

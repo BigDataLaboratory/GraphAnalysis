@@ -7,6 +7,7 @@ from pathlib import Path
 
 from Utils.logging_config import setup_logging
 from algorithms.GraphAnalysis import GraphAnalysis
+from Utils.memory_monitor import setup_memory_logging, memory_tracker, log_memory
 
 
 os.chdir(Path(__file__).parent)
@@ -31,6 +32,7 @@ if __name__ == '__main__':
 
     setup_logging(prop["log"]["filepath"])
     logger = logging.getLogger(__name__)
+    setup_memory_logging(prop["log"]["filepath"])
 
     do_graph_generation = prop["graph_generation"]["to_execute"]
     do_community_detection_leiden = prop["community_detection"]["leiden"]["to_execute"]
