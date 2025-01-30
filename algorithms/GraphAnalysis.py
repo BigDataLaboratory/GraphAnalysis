@@ -82,7 +82,6 @@ class GraphAnalysis:
         if self.parameters.do_community_detection_combo:
             combo_instance = Combo()
             g = combo_instance.csv_to_nx(graph, 11)
-            del graph
             rps = combo_instance.compute_combo_in_parallel(g)
             for rp in rps:
                 combo_instance.export_partition(g, rp,

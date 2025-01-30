@@ -29,7 +29,9 @@ class Combo:
         for type, src, dst, weight in graph:
             data_graph.add_edge(src, dst, key=type, weight=int(weight))
 
+        del graph
         # Iterate over the edges to assign node types
+        log_memory("Adding node type for each node")
         for u, v, edge_key, data in data_graph.edges(keys=True, data=True):
             if edge_key in ['0', '4', '5']:
                 data_graph.nodes[u]["type"] = 'u'
@@ -40,16 +42,19 @@ class Combo:
             elif edge_key == '3':
                 data_graph.nodes[u]["type"] = 'h'
                 data_graph.nodes[v]["type"] = 'h'
+        log_memory("Adding node type successfully completed")
 
         if edge_threshold != 0:
             # Find nodes with a degree (counting all parallel edges) less than edge_threshold
             # Find nodes with the target type that also have degree < edge_threshold
             target_type = "u"
+            log_memory("Remove nodes with degree less than edge_threshold")
             nodes_to_remove = [
                 node for node in data_graph.nodes
                 if data_graph.nodes[node].get("type") == target_type and (data_graph.out_degree(node) + data_graph.in_degree(node)) < edge_threshold
-            ]            # Remove nodes with degree less then edge_threshold
+            ]            # Remove nodes with degree less than edge_threshold
             data_graph.remove_nodes_from(nodes_to_remove)
+            log_memory("Remove nodes successfully completed")
         end = time.time()
         log_memory("Graph successfully converted in NetworkX format")
         self.logger.info("Elapsed time: " + str(end - start))
