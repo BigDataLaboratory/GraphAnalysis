@@ -19,7 +19,7 @@ class Combo:
         self.id = uuid.uuid1().hex
 
     @memory_tracker
-    def csv_to_nx(self, graph):
+    def csv_to_nx(self, graph, edge_threshold = 0):
         log_memory("Start converting graph in NetworkX format")
         start = time.time()
 
@@ -41,6 +41,15 @@ class Combo:
                 data_graph.nodes[u]["type"] = 'h'
                 data_graph.nodes[v]["type"] = 'h'
 
+        if edge_threshold != 0:
+            # Find nodes with a degree (counting all parallel edges) less than edge_threshold
+            # Find nodes with the target type that also have degree < edge_threshold
+            target_type = "u"
+            nodes_to_remove = [
+                node for node in data_graph.nodes
+                if data_graph.nodes[node].get("type") == target_type and (data_graph.out_degree(node) + data_graph.in_degree(node)) < edge_threshold
+            ]            # Remove nodes with degree less then edge_threshold
+            data_graph.remove_nodes_from(nodes_to_remove)
         end = time.time()
         log_memory("Graph successfully converted in NetworkX format")
         self.logger.info("Elapsed time: " + str(end - start))
