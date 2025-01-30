@@ -4,7 +4,7 @@ import os
 import time
 import uuid
 
-import graphscope.nx as nx
+import networkx as nx
 import numpy as np
 import pycombo as pycombo
 
