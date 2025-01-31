@@ -28,7 +28,7 @@ class Combo:
         # Add edges to the MultiGraph
         while graph:
             element = graph.pop(0)
-            data_graph.add_edge(element[1], element[2], key=element[0], weight=element[3])
+            data_graph.add_edge(element[1], element[2], key=element[0], weight=int(element[3]))
 
         del graph
         # Iterate over the edges to assign node types
