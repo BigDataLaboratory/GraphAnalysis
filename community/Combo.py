@@ -27,8 +27,9 @@ class Combo:
     def process_batch(self, index, edge_batch):
         """Processes a batch of edges and adds them to the graph."""
         self.logger.info(f"[Thread-{index}] Processing {len(edge_batch)} edges...")
-        for edge_type, src, dst, weight in edge_batch:
-            self.data_graph.add_edge(src, dst, key=edge_type, weight=int(weight))
+        while edge_batch:
+            e = edge_batch.pop(0)
+            self.data_graph.add_edge(e[1], e[2], key=e[0], weight=int(e[3]))
         self.logger.info(f"[Thread-{index}] Finished processing {len(edge_batch)} edges.")
 
 
@@ -59,6 +60,7 @@ class Combo:
 
         # Split dataset into optimal chunks
         edge_chunks = self.chunk_list(graph, num_threads)
+        del graph
         # Process edges in parallel using ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=num_threads) as executor:
             executor.map(self.process_batch, range(len(edge_chunks)), edge_chunks)
@@ -71,7 +73,6 @@ class Combo:
         #     if counter % log_interval == 0 or not graph:
         #         log_memory(f"Processed {counter} of {len(graph)} elements so far.")
 
-        del graph
         # Iterate over the edges to assign node types
         log_memory("Adding node type for each node")
         for u, v, edge_key, data in self.data_graph.edges(keys=True, data=True):
