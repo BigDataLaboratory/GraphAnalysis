@@ -26,8 +26,9 @@ class Combo:
         data_graph = nx.MultiDiGraph()
 
         # Add edges to the MultiGraph
-        for type, src, dst, weight in graph:
-            data_graph.add_edge(src, dst, key=type, weight=int(weight))
+        while graph:
+            element = graph.pop(0)
+            data_graph.add_edge(element[1], element[2], key=element[0], weight=element[3])
 
         del graph
         # Iterate over the edges to assign node types
