@@ -25,10 +25,16 @@ class Combo:
 
         data_graph = nx.MultiDiGraph()
 
+        counter = 0
+        log_interval = 1000
+
         # Add edges to the MultiGraph
         while graph:
             element = graph.pop(0)
             data_graph.add_edge(element[1], element[2], key=element[0], weight=int(element[3]))
+            counter += 1  # Increment counter
+            if counter % log_interval == 0 or not graph:
+                log_memory(f"Processed {counter} of {len(graph)} elements so far.")
 
         del graph
         # Iterate over the edges to assign node types
