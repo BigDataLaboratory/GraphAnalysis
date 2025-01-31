@@ -1,8 +1,12 @@
 import concurrent.futures
+import itertools
 import logging
+import multiprocessing
 import os
+import threading
 import time
 import uuid
+from concurrent.futures.thread import ThreadPoolExecutor
 
 import graphscope.nx as nx
 import numpy as np
@@ -17,38 +21,69 @@ class Combo:
 
     def __init__(self):
         self.id = uuid.uuid1().hex
+        self.data_graph = nx.MultiDiGraph()
+
+    # Function to process a batch of edges
+    def process_batch(self, index, edge_batch):
+        """Processes a batch of edges and adds them to the graph."""
+        self.logger.info(f"[Thread-{index}] Processing {len(edge_batch)} edges...")
+        for edge_type, src, dst, weight in edge_batch:
+            self.data_graph.add_edge(src, dst, key=edge_type, weight=int(weight))
+        self.logger.info(f"[Thread-{index}] Finished processing {len(edge_batch)} edges.")
+
+
+    # Function to dynamically split the dataset
+    def chunk_list(self, data, num_chunks):
+        """Splits data into balanced chunks for efficient parallel processing."""
+        avg_chunk_size = max(1, len(data) // num_chunks)  # Prevents zero-sized chunks
+        self.logger.info("Average chunk size: {}".format(avg_chunk_size))
+        it = iter(data)
+        return [list(itertools.islice(it, avg_chunk_size)) for _ in range(num_chunks)]
 
     @memory_tracker
     def csv_to_nx(self, graph, edge_threshold = 0):
         log_memory("Start converting graph in NetworkX format")
         start = time.time()
 
-        data_graph = nx.MultiDiGraph()
+        # Auto-tune number of threads
+        num_edges = len(graph)
+        cpu_cores = multiprocessing.cpu_count()
 
-        counter = 0
-        log_interval = 1000
+        # Adaptive threading logic
+        if num_edges < 1000:
+            num_threads = min(4, cpu_cores-2)  # Use up to 4 threads for small datasets
+        elif num_edges < 10000:
+            num_threads = min(8, cpu_cores-2)  # Use up to 8 threads for medium datasets
+        else:
+            num_threads = min(16, cpu_cores-2)  # Use more threads for large datasets
+
+        # Split dataset into optimal chunks
+        edge_chunks = self.chunk_list(graph, num_threads)
+        # Process edges in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            executor.map(self.process_batch, range(len(edge_chunks)), edge_chunks)
 
         # Add edges to the MultiGraph
-        while graph:
-            element = graph.pop(0)
-            data_graph.add_edge(element[1], element[2], key=element[0], weight=int(element[3]))
-            counter += 1  # Increment counter
-            if counter % log_interval == 0 or not graph:
-                log_memory(f"Processed {counter} of {len(graph)} elements so far.")
+        # while graph:
+        #     element = graph.pop(0)
+        #     data_graph.add_edge(element[1], element[2], key=element[0], weight=int(element[3]))
+        #     counter += 1  # Increment counter
+        #     if counter % log_interval == 0 or not graph:
+        #         log_memory(f"Processed {counter} of {len(graph)} elements so far.")
 
         del graph
         # Iterate over the edges to assign node types
         log_memory("Adding node type for each node")
-        for u, v, edge_key, data in data_graph.edges(keys=True, data=True):
+        for u, v, edge_key, data in self.data_graph.edges(keys=True, data=True):
             if edge_key in ['0', '4', '5']:
-                data_graph.nodes[u]["type"] = 'u'
-                data_graph.nodes[v]["type"] = 'u'
+                self.data_graph.nodes[u]["type"] = 'u'
+                self.data_graph.nodes[v]["type"] = 'u'
             elif edge_key == '2':
-                data_graph.nodes[u]["type"] = 'u'
-                data_graph.nodes[v]["type"] = 'h'
+                self.data_graph.nodes[u]["type"] = 'u'
+                self.data_graph.nodes[v]["type"] = 'h'
             elif edge_key == '3':
-                data_graph.nodes[u]["type"] = 'h'
-                data_graph.nodes[v]["type"] = 'h'
+                self.data_graph.nodes[u]["type"] = 'h'
+                self.data_graph.nodes[v]["type"] = 'h'
         log_memory("Adding node type successfully completed")
 
         if edge_threshold != 0:
@@ -57,15 +92,16 @@ class Combo:
             target_type = "u"
             log_memory("Remove nodes with degree less than edge_threshold")
             nodes_to_remove = [
-                node for node in data_graph.nodes
-                if data_graph.nodes[node].get("type") == target_type and (data_graph.out_degree(node) + data_graph.in_degree(node)) < edge_threshold
+                node for node in self.data_graph.nodes
+                if self.data_graph.nodes[node].get("type") == target_type and (self.data_graph.out_degree(node) + self.data_graph.in_degree(node)) < edge_threshold
             ]            # Remove nodes with degree less than edge_threshold
-            data_graph.remove_nodes_from(nodes_to_remove)
+            log_memory("{}".format(nodes_to_remove))
+            self.data_graph.remove_nodes_from(nodes_to_remove)
             log_memory("Remove nodes successfully completed")
         end = time.time()
         log_memory("Graph successfully converted in NetworkX format")
         self.logger.info("Elapsed time: " + str(end - start))
-        return data_graph
+        return self.data_graph
 
     @memory_tracker
     def worker_process(self, g, resolution_parameter):
