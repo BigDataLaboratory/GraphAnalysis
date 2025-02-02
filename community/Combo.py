@@ -52,11 +52,11 @@ class Combo:
 
         # Adaptive threading logic
         if num_edges < 1000:
-            num_threads = min(4, cpu_cores-2)  # Use up to 4 threads for small datasets
+            num_threads = max(4, cpu_cores-2)  # Use up to 4 threads for small datasets
         elif num_edges < 10000:
-            num_threads = min(8, cpu_cores-2)  # Use up to 8 threads for medium datasets
+            num_threads = max(8, cpu_cores-2)  # Use up to 8 threads for medium datasets
         else:
-            num_threads = min(16, cpu_cores-2)  # Use more threads for large datasets
+            num_threads = max(16, cpu_cores-2)  # Use more threads for large datasets
 
         # Split dataset into optimal chunks
         edge_chunks = self.chunk_list(graph, num_threads)
