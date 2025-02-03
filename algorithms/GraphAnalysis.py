@@ -79,9 +79,10 @@ class GraphAnalysis:
             w = Writer()
             if self.parameters.do_read_graph_from_file:
                 graph = w.read_csv_files_in_folder_parallel(self.parameters.graph_file_path)
+
         if self.parameters.do_community_detection_combo:
             combo_instance = Combo()
-            g = combo_instance.csv_to_nx(graph, 6)
+            g = combo_instance.csv_to_nx(graph)
             rps = combo_instance.compute_combo_in_parallel(g)
             for rp in rps:
                 combo_instance.export_partition(g, rp,

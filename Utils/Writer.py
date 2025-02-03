@@ -12,7 +12,7 @@ class Writer:
     logger = logging.getLogger('Writer')
 
     def __init__(self):
-        pass
+        self.graph_degree = {}
 
     @staticmethod
     def write_on_csv(file_path, rows):
@@ -98,6 +98,7 @@ class Writer:
                 row = [vertex.index] + [vertex[attr] for attr in attributes]
                 writer.writerow(row)
 
+
     def process_csv_file(self, file_path, chunk_size, header=False):
         """
         Read a single CSV file in chunks and process it.
@@ -117,6 +118,11 @@ class Writer:
             rows = []
             for row in reader:
                 rows.append(row)
+                if row[0] in ['0', '4', '5']:
+                    self.graph_degree[row[1]] = self.graph_degree.get(row[1], 0) + 1
+                    self.graph_degree[row[2]] = self.graph_degree.get(row[2], 0) + 1
+                elif row[0] in ['2']:
+                    self.graph_degree[row[1]] = self.graph_degree.get(row[1], 0) + 1
                 if len(rows) == chunk_size:
                     processed_data.extend(self.process_chunk(rows))
                     rows = []  # Reset for the next chunk
@@ -156,4 +162,10 @@ class Writer:
         with concurrent.futures.ThreadPoolExecutor(max_workers = 30) as executor:
             results = executor.map(self.process_csv_file_parallel, args)
         self.logger.info("Graph loading from CSV completed")
-        return list(chain.from_iterable(results))
+        final_result = list(chain.from_iterable(results))
+        remove_nodes = [key for key, value in self.graph_degree.items() if value < 6]
+        # Remove sublists where at least one of the elements at index 1 or 2 is in remove_list
+        filtered_data = [sublist for sublist in final_result if sublist[1] not in remove_nodes and sublist[2] not in remove_nodes]
+        del remove_nodes
+        del final_result
+        return filtered_data
