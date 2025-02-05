@@ -27,9 +27,11 @@ class Combo:
     def process_batch(self, index, edge_batch):
         """Processes a batch of edges and adds them to the graph."""
         self.logger.info(f"[Thread-{index}] Processing {len(edge_batch)} edges...")
-        while edge_batch:
-            e = edge_batch.pop(0)
-            self.data_graph.add_edge(e[1], e[2], key=e[0], weight=int(e[3]))
+        # Use bulk insertion instead of adding edges one-by-one
+        self.data_graph.add_edges_from(
+            [(e[1], e[2], {"key": e[0], "weight": int(e[3])}) for e in edge_batch]
+        )
+        del edge_batch
         self.logger.info(f"[Thread-{index}] Finished processing {len(edge_batch)} edges.")
 
 
