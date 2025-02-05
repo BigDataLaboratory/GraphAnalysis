@@ -168,7 +168,7 @@ class Writer:
 
         self.logger.info("Graph loading from CSV completed")
 
-        remove_nodes = {key for key, value in self.graph_degree.items() if value < 6}
+        remove_nodes = {key for key, value in self.graph_degree.items() if value < 11}
 
         self.logger.info("Created list with nodes to remove")
 
@@ -187,5 +187,5 @@ class Writer:
         final_result = new_edges
         del new_edges
         del remove_nodes
-
+        self.logger.info("New number of edges to analyze: {}".format(len(final_result)))
         return final_result
