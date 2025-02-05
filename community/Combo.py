@@ -29,7 +29,7 @@ class Combo:
         self.logger.info(f"[Thread-{index}] Processing {len(edge_batch)} edges...")
         # Use bulk insertion instead of adding edges one-by-one
         self.data_graph.add_edges_from(
-            [(e[1], e[2], {"key": e[0], "weight": int(e[3])}) for e in edge_batch]
+            [(e[1], e[2], e[0], {"weight": int(e[3])}) for e in edge_batch]
         )
         del edge_batch
         self.logger.info(f"[Thread-{index}] Finished processing {len(edge_batch)} edges.")
