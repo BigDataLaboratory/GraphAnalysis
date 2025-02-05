@@ -172,25 +172,19 @@ class Writer:
 
         self.logger.info("Created list with nodes to remove")
 
-        while remove_nodes:
-            self.logger.info("I will analyze {} nodes to remove".format(len(remove_nodes)))
-            new_edges = []
-            self.logger.info("There are {} edges to analyze".format(len(final_result)))
-            start_time = time.time()
-            last_log_time = start_time
-            for i, e in enumerate(final_result):
-                if e[1] not in remove_nodes and e[2] not in remove_nodes:
-                    new_edges.append(e)
-                else:
-                    self.graph_degree[e[1]] -= 1
-                    self.graph_degree[e[2]] -= 1
-                # Log progress every 3 minutes
-                if time.time() - last_log_time >= 180:
-                    self.logger.info(f"Filtered {i:,} edges in {time.time() - start_time:.2f} seconds")
-                    last_log_time = time.time()
-            final_result = new_edges
-            remove_nodes = {key for key, value in self.graph_degree.items() if value < 6}
-
+        self.logger.info("I will analyze {} nodes to remove".format(len(remove_nodes)))
+        new_edges = []
+        self.logger.info("There are {} edges to analyze".format(len(final_result)))
+        start_time = time.time()
+        last_log_time = start_time
+        for i, e in enumerate(final_result):
+            if e[1] not in remove_nodes and e[2] not in remove_nodes:
+                new_edges.append(e)
+            # Log progress every 1 minute
+            if time.time() - last_log_time >= 60:
+                self.logger.info(f"Filtered {i:,} edges in {time.time() - start_time:.2f} seconds")
+                last_log_time = time.time()
+        final_result = new_edges
         del new_edges
         del remove_nodes
 
