@@ -14,4 +14,6 @@ In the fourth step, _sentiment, polarisation and topic analysis,_ starting from 
 
 ### 
 
-Added the **Twitter Linguistic Analysis** notebook. All the analysis can be run on Cleaned_twitter.csv if is on the same folder. The first block in the notebook is to clean up Raw Tweet and process them into the cleaned format. If using openAI as representation model for BERTopic (clearer topic titles) a openAI API keys should be provided. Otherwise a local transformer can be used (just uncomment the lines). 
+## Added the *Twitter Linguistic Analysis* notebook. 
+
+All the analysis can be run on Cleaned_twitter.csv if is on the same folder. The first block in the notebook is to clean up Raw Tweet and process them into the cleaned format. If using openAI as representation model for BERTopic (clearer topic titles) a openAI API keys should be provided. Otherwise a local transformer can be used (just uncomment the lines). 
