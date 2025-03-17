@@ -11,3 +11,7 @@ In the second step, _graph building_, the Twittersphere is modeled with an heter
 In the third step, _Community clustering_, the graph was partitioned in communities using the Leiden algorithm. The resulting communities are made up of both the user nodes and the hashtags.
 
 In the fourth step, _sentiment, polarisation and topic analysis,_ starting from the text, is under development.
+
+### 
+
+Added the **Twitter Linguistic Analysis** notebook. All the analysis can be run on Cleaned_twitter.csv if is on the same folder. The first block in the notebook is to clean up Raw Tweet and process them into the cleaned format. If using openAI as representation model for BERTopic (clearer topic titles) a openAI API keys should be provided. Otherwise a local transformer can be used (just uncomment the lines). 
