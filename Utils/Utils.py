@@ -18,10 +18,10 @@ class Utils:
         Compute the not signed hash of the input element
         """
         if x is not None:
-            return mmh3.hash64(x, 0)[0]
+            return mmh3.hash64(x, 0, signed=False)[0]
 
     @staticmethod
-    def combinations_list(x):
+    def lscombinations_list(x):
         """
         Create all the possible combinations within hashtag in the same tweet, using their hashes
         """

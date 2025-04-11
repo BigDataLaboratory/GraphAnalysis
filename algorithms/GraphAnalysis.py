@@ -4,6 +4,7 @@ from collections import namedtuple
 
 from Utils.Writer import Writer
 from algorithms.CommunityText import CommunityText
+from algorithms.EdgeToGraph import EdgeToGraph
 from algorithms.GraphGeneration import GraphGeneration
 from community.Combo import Combo
 from community.Leiden import Leiden
@@ -78,11 +79,18 @@ class GraphAnalysis:
         if community_detection:
             w = Writer()
             if self.parameters.do_read_graph_from_file:
-                graph = w.read_csv_files_in_folder_parallel(self.parameters.graph_file_path)
+                edge_to_graph = EdgeToGraph()
+                for batch in w.read_csv_in_batch(self.parameters.graph_file_path[0], 10000):
+                    edge_to_graph.to_graph(batch)
+                del batch
+                g = edge_to_graph.get_graph()
+                # todo remove?
+                # graph = w.read_csv_files_in_folder_parallel(self.parameters.graph_file_path)
 
         if self.parameters.do_community_detection_combo:
             combo_instance = Combo()
-            g = combo_instance.csv_to_nx(graph)
+            # todo remove?
+            # g = combo_instance.csv_to_nx(graph)
             rps = combo_instance.compute_combo_in_parallel(g)
             for rp in rps:
                 combo_instance.export_partition(g, rp,
@@ -92,7 +100,7 @@ class GraphAnalysis:
 
         if self.parameters.do_community_detection_leiden:
             leiden_instance = Leiden()
-            g = leiden_instance.csv_to_igraph(graph)
+            g = leiden_instance.csv_to_igraph(g) #todo pay attention: switched graph with g
             # leiden_instance.compute_pagerank(g)
             rps = leiden_instance.compute_leiden_in_parallel(g)
             for rp in rps:

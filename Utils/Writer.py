@@ -5,6 +5,8 @@ import logging
 import csv
 import time
 
+import networkx as nx
+
 from Utils.Const import Const as c
 from itertools import chain
 from collections import defaultdict
@@ -147,6 +149,23 @@ class Writer:
         """
         file_path, chunk_size, header = args
         return self.process_csv_file(file_path, chunk_size, header)
+
+    def read_csv_in_batch(self, path, batch_size = 1000, header = False):
+        try:
+            with open(path, mode='r', newline='', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                if header:
+                    h = next(reader, None)  # Skip the header
+                batch = []
+                for row in reader:
+                    batch.append(row)
+                    if len(batch) == batch_size:
+                        yield batch
+                        batch = []
+                if batch:  # Compute the last batch if it exists
+                    yield batch
+        except FileNotFoundError:
+            self.logger.debug(f"Csv file at {path} not found.")
 
     def read_csv_files_in_folder_parallel(self, path, chunk_size=100, header=False):
         """

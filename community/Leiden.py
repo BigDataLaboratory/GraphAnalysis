@@ -68,6 +68,7 @@ class Leiden:
         self.logger.info("Elapsed time: " + str(end - start))
 
     def worker_process(self, g, resolution_parameter):
+
         partition = la.find_partition(g, la.CPMVertexPartition, resolution_parameter=resolution_parameter,
                                       weights='weight',
                                       seed=0)
