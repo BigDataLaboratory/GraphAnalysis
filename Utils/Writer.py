@@ -190,7 +190,6 @@ class Writer:
 
         with lock:
             edge_to_graph.to_graph(batch)
-            self.logger.info("start {} end {} ")
 
     def read_csv_in_batch(self, path, batch_size = 20, header = False):
         nrows = 0
