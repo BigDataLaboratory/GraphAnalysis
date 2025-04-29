@@ -79,8 +79,7 @@ class GraphAnalysis:
         if community_detection:
             w = Writer()
             if self.parameters.do_read_graph_from_file:
-                g = w.read_csv_in_batch(self.parameters.graph_file_path[0], 20)
-                self.logger.info("{}".format(type(g)))
+                g = w.read_csv_in_batch(self.parameters.graph_file_path[0], 1000)
 
 
         if self.parameters.do_community_detection_combo:
