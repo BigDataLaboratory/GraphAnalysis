@@ -201,7 +201,7 @@ class Writer:
                     nrows -= 1
         except FileNotFoundError:
             self.logger.debug(f"Csv file at {path} not found.")
-        num_threads = min(4, multiprocessing.cpu_count())
+        num_threads = min(4, multiprocessing.cpu_count()-2)
         start_row = 1 if header else 0
         task_queue = Queue()
         lock = threading.Lock()
