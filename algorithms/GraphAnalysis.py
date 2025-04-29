@@ -79,13 +79,9 @@ class GraphAnalysis:
         if community_detection:
             w = Writer()
             if self.parameters.do_read_graph_from_file:
-                edge_to_graph = EdgeToGraph()
-                for batch in w.read_csv_in_batch(self.parameters.graph_file_path[0], 10000):
-                    edge_to_graph.to_graph(batch)
-                del batch
-                g = edge_to_graph.get_graph()
-                # todo remove?
-                # graph = w.read_csv_files_in_folder_parallel(self.parameters.graph_file_path)
+                g = w.read_csv_in_batch(self.parameters.graph_file_path[0], 20)
+                self.logger.info("{}".format(type(g)))
+
 
         if self.parameters.do_community_detection_combo:
             combo_instance = Combo()

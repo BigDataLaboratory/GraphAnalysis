@@ -1,9 +1,12 @@
 import concurrent.futures
 import glob
+import multiprocessing
 import os
 import logging
 import csv
+import threading
 import time
+from queue import Queue
 
 import networkx as nx
 
@@ -11,6 +14,8 @@ from Utils.Const import Const as c
 from itertools import chain
 from collections import defaultdict
 from multiprocessing import cpu_count
+
+from algorithms.EdgeToGraph import EdgeToGraph
 
 
 class Writer:
@@ -150,22 +155,84 @@ class Writer:
         file_path, chunk_size, header = args
         return self.process_csv_file(file_path, chunk_size, header)
 
-    def read_csv_in_batch(self, path, batch_size = 1000, header = False):
-        try:
-            with open(path, mode='r', newline='', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                if header:
-                    h = next(reader, None)  # Skip the header
-                batch = []
-                for row in reader:
+    def _process_csv_chunk(self, path, start, end, header, edge_to_graph: EdgeToGraph):
+        with open(path, mode='r', newline='', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            if header:
+                next(reader, None)  # Skip the header
+            for i in range(start):
+                next(reader, None)
+            batch = []
+            i = start
+            for row in reader:
+                if i < end:
                     batch.append(row)
-                    if len(batch) == batch_size:
-                        yield batch
-                        batch = []
-                if batch:  # Compute the last batch if it exists
-                    yield batch
+                    i+=1
+                else:
+                    break
+        edge_to_graph.to_graph(batch)
+
+    def _process_csv_chunk_2(self, path, start, end, header, edge_to_graph, lock):
+        with open(path, mode='r', newline='', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            if header:
+                next(reader, None)
+            for _ in range(start):
+                next(reader, None)
+
+            batch = []
+            i = start
+            for row in reader:
+                if i >= end:
+                    break
+                batch.append(row)
+                i += 1
+
+        with lock:
+            edge_to_graph.to_graph(batch)
+            self.logger.info("start {} end {} ")
+
+    def read_csv_in_batch(self, path, batch_size = 20, header = False):
+        nrows = 0
+        try:
+            with open(path) as f:
+                nrows = sum(1 for line in f)
+                if header:
+                    nrows -= 1
         except FileNotFoundError:
             self.logger.debug(f"Csv file at {path} not found.")
+        num_threads = min(4, multiprocessing.cpu_count())
+        start_row = 1 if header else 0
+        task_queue = Queue()
+        lock = threading.Lock()
+
+        # Fill the task queue with start and end ranges
+        while start_row < nrows:
+            end_row = min(start_row + batch_size, nrows)
+            task_queue.put((start_row, end_row))
+            start_row = end_row
+
+        e_to_g = EdgeToGraph()
+        def worker():
+            while not task_queue.empty():
+                try:
+                    start, end = task_queue.get_nowait()
+                except:
+                    break
+                self._process_csv_chunk_2(path, start, end, header, e_to_g, lock)
+                task_queue.task_done()
+
+        threads = []
+        for _ in range(num_threads):
+            t = threading.Thread(target=worker)
+            t.start()
+            threads.append(t)
+
+        for t in threads:
+            t.join()
+
+        return e_to_g.get_graph()
+
 
     def read_csv_files_in_folder_parallel(self, path, chunk_size=100, header=False):
         """

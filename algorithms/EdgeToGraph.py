@@ -15,7 +15,7 @@ class EdgeToGraph:
 
     def to_graph(self, edge_batch = None):
         if edge_batch == None:
-            raise AttributeError('edge_list cannot be None')
+            raise AttributeError('edge_batch cannot be None')
 
         if self.type == 'nx':
             self.g.add_edges_from(
