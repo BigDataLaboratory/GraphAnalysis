@@ -197,7 +197,7 @@ class Writer:
         global_graph = nx.compose(global_graph, subgraph)
         if step % serialize_every == 0:
             filename = f"graph_snapshot_step{step}.pkl"
-            with open(f"/ipazianas/twitter_graph_dump/{filename}", 'wb') as f:
+            with open(f"/ipazianas/pasquini/twitter_graph_dump/{filename}", 'wb') as f:
                 pickle.dump(global_graph, f)
             self.logger.info(f"Serialized at step {step} to {filename}")
 
@@ -255,7 +255,7 @@ class Writer:
                 global_graph = self.merge_and_serialize(global_graph, subgraph, step, serialize_every)
                 step += 1
         # Final save
-        with open("/ipazianas/twitter_graph_dump/graph_final.pkl", "wb") as f:
+        with open("/ipazianas/pasquini/twitter_graph_dump/graph_final.pkl", "wb") as f:
             pickle.dump(global_graph, f)
         print("Final graph saved.")
 
