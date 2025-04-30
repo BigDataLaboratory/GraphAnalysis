@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import logging
 import csv
+import pickle
 import threading
 import time
 from queue import Queue
@@ -172,6 +173,39 @@ class Writer:
                     break
         edge_to_graph.to_graph(batch)
 
+    def process_csv_chunk_3(self, args, header=False):
+        path, start, end = args
+        with open(path, mode='r', newline='', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            if header:
+                next(reader, None)
+            for _ in range(start):
+                next(reader, None)
+
+            batch = []
+            i = start
+            for row in reader:
+                if i >= end:
+                    break
+                batch.append(row)
+                i += 1
+        e_to_g = EdgeToGraph()
+        e_to_g.to_graph(batch)
+        return e_to_g.get_graph()
+
+    def merge_and_serialize(self, global_graph, subgraph, step, serialize_every=10):
+        global_graph = nx.compose(global_graph, subgraph)
+        if step % serialize_every == 0:
+            filename = f"graph_snapshot_step{step}.pkl"
+            with open(f"/ipazianas/twitter_graph_dump/{filename}", 'wb') as f:
+                pickle.dump(global_graph, f)
+            self.logger.info(f"Serialized at step {step} to {filename}")
+
+            # Optional: reset to free memory (keep just recent state or restart fresh)
+            global_graph = nx.MultiDiGraph()
+
+        return global_graph
+
     def _process_csv_chunk_2(self, path, start, end, header, edge_to_graph, lock):
         with open(path, mode='r', newline='', encoding='utf-8') as f:
             reader = csv.reader(f)
@@ -191,7 +225,43 @@ class Writer:
         with lock:
             edge_to_graph.to_graph(batch)
 
-    def read_csv_in_batch(self, path, batch_size = 20, header = False):
+    def read_csv_in_batch_2(self, path, batch_size = 100000, header = False):
+        global_graph = nx.MultiDiGraph()
+        serialize_every = 10  # Save every 10 steps
+
+        tasks = []
+
+        total_rows = 0
+        try:
+            with open(path) as f:
+                total_rows = sum(1 for line in f)
+                if header:
+                    total_rows -= 1
+        except FileNotFoundError:
+            self.logger.debug(f"Csv file at {path} not found.")
+
+        for start in range(0, total_rows, batch_size):
+            end = min(start + batch_size, total_rows)
+            tasks.append((path, start, end))
+
+        # Recycle pool between batches if needed
+        step = 1
+        for i in range(0, len(tasks), cpu_count()-2):
+            with multiprocessing.Pool(processes=cpu_count() - 2) as pool:
+                batch_tasks = tasks[i:i + cpu_count()]
+                subgraphs = pool.map(self.process_csv_chunk_3, batch_tasks)
+
+            for subgraph in subgraphs:
+                global_graph = self.merge_and_serialize(global_graph, subgraph, step, serialize_every)
+                step += 1
+        # Final save
+        with open("/ipazianas/twitter_graph_dump/graph_final.pkl", "wb") as f:
+            pickle.dump(global_graph, f)
+        print("Final graph saved.")
+
+        return global_graph
+
+    def read_csv_in_batch(self, path, batch_size = 100000, header = False):
         nrows = 0
         try:
             with open(path) as f:
