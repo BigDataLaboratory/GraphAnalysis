@@ -72,6 +72,7 @@ if __name__ == '__main__':
     community_config = prop["community_detection"]["parameters"]
     do_read_graph_from_file = community_config["read_from_file"]
     graph_file_path = community_config["graph_file_path"]
+    pickle_graph_path = community_config["pickle_graph_file_path"]
     community_combo_prop = prop["community_detection"]["combo"]["parameters"]
     community_leiden_prop = prop["community_detection"]["leiden"]["parameters"]
 
@@ -135,6 +136,7 @@ if __name__ == '__main__':
         "output_map_prefix",
         "do_read_graph_from_file",
         "graph_file_path",
+        "pickle_graph_path",
         "community_combo_prop",
         "community_leiden_prop",
         "community_indexes",
@@ -190,6 +192,7 @@ if __name__ == '__main__':
                    output_map_prefix,
                    do_read_graph_from_file,
                    graph_file_path,
+                   pickle_graph_path,
                    community_combo_prop,
                    community_leiden_prop,
                    community_indexes,

@@ -5,11 +5,12 @@ import os
 import logging
 import csv
 import pickle
-import threading
 import time
-from queue import Queue
+import uuid
+from datetime import datetime
 
 import networkx as nx
+import igraph as ig
 
 from Utils.Const import Const as c
 from itertools import chain
@@ -24,6 +25,7 @@ class Writer:
 
     def __init__(self):
         self.graph_degree = defaultdict(int)
+        self.id = uuid.uuid1().hex
 
     @staticmethod
     def write_on_csv(file_path, rows):
@@ -156,24 +158,8 @@ class Writer:
         file_path, chunk_size, header = args
         return self.process_csv_file(file_path, chunk_size, header)
 
-    def _process_csv_chunk(self, path, start, end, header, edge_to_graph: EdgeToGraph):
-        with open(path, mode='r', newline='', encoding='utf-8') as f:
-            reader = csv.reader(f)
-            if header:
-                next(reader, None)  # Skip the header
-            for i in range(start):
-                next(reader, None)
-            batch = []
-            i = start
-            for row in reader:
-                if i < end:
-                    batch.append(row)
-                    i+=1
-                else:
-                    break
-        edge_to_graph.to_graph(batch)
 
-    def process_csv_chunk_3(self, args, header=False):
+    def process_csv_chunk(self, args, graph_type, header=False):
         path, start, end = args
         with open(path, mode='r', newline='', encoding='utf-8') as f:
             reader = csv.reader(f)
@@ -189,45 +175,48 @@ class Writer:
                     break
                 batch.append(row)
                 i += 1
-        e_to_g = EdgeToGraph()
+        e_to_g = EdgeToGraph(graph_type)
         e_to_g.to_graph(batch)
         return e_to_g.get_graph()
 
-    def merge_and_serialize(self, global_graph, subgraph, step, serialize_every=10):
-        global_graph = nx.compose(global_graph, subgraph)
+    def merge_and_serialize(self, global_graph, subgraph, graph_type, step, output_folder, output_file_name, serialize_every=10):
+
+        if graph_type == 'nx':
+            global_graph = nx.compose(global_graph, subgraph)
+        elif graph_type == 'igraph':
+            name_to_index = {v["name"]: v.index for v in global_graph.vs}
+            for v in subgraph.vs:
+                if v["name"] not in name_to_index:
+                    global_graph.add_vertex(name=v["name"])
+                    name_to_index[v["name"]] = global_graph.vcount() - 1
+            for e in subgraph.es:
+                src_name = subgraph.vs[e.source]["name"]
+                dst_name = subgraph.vs[e.target]["name"]
+                global_graph.add_edge(src_name, dst_name, **e.attributes())
+
         if step % serialize_every == 0:
-            filename = f"graph_snapshot_step{step}.pkl"
-            with open(f"/ipazianas/pasquini/twitter_graph_dump/{filename}", 'wb') as f:
+            filename = f"{output_file_name}_snapshot_step_{step}.pkl"
+            full_path = os.path.join(output_folder, filename)
+            with open(full_path, 'wb') as f:
                 pickle.dump(global_graph, f)
             self.logger.info(f"Serialized at step {step} to {filename}")
 
             # Optional: reset to free memory (keep just recent state or restart fresh)
-            global_graph = nx.MultiDiGraph()
+            global_graph = nx.MultiDiGraph() if graph_type == 'nx' else ig.Graph(directed=True)
 
         return global_graph
 
-    def _process_csv_chunk_2(self, path, start, end, header, edge_to_graph, lock):
-        with open(path, mode='r', newline='', encoding='utf-8') as f:
-            reader = csv.reader(f)
-            if header:
-                next(reader, None)
-            for _ in range(start):
-                next(reader, None)
 
-            batch = []
-            i = start
-            for row in reader:
-                if i >= end:
-                    break
-                batch.append(row)
-                i += 1
+    def read_csv_in_batch(self, path, output_path, graph_type = 'nx', batch_size = 300000, header = False):
+        print(graph_type)
+        global_graph = nx.MultiDiGraph() if graph_type == 'nx' else ig.Graph(directed=True)
+        serialize_every = 30  # Save every 10 steps
 
-        with lock:
-            edge_to_graph.to_graph(batch)
-
-    def read_csv_in_batch_2(self, path, batch_size = 100000, header = False):
-        global_graph = nx.MultiDiGraph()
-        serialize_every = 10  # Save every 10 steps
+        uuid = self.id
+        output_folder = os.sep.join([output_path, uuid])
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+        output_file_name = f"{datetime.now().strftime('%Y%m%d_%H%M')}.pkl"
 
         tasks = []
 
@@ -246,62 +235,21 @@ class Writer:
 
         # Recycle pool between batches if needed
         step = 1
-        for i in range(0, len(tasks), cpu_count()-2):
-            with multiprocessing.Pool(processes=cpu_count() - 2) as pool:
-                batch_tasks = tasks[i:i + cpu_count()]
-                subgraphs = pool.map(self.process_csv_chunk_3, batch_tasks)
+        for i in range(0, len(tasks), cpu_count() - 1):
+            with multiprocessing.Pool(processes=cpu_count() - 1) as pool:
+                batch_tasks = tasks[i:i + cpu_count() - 1]
+                print(batch_tasks)
+                subgraphs = pool.map(self.process_csv_chunk, batch_tasks, graph_type)
 
             for subgraph in subgraphs:
-                global_graph = self.merge_and_serialize(global_graph, subgraph, step, serialize_every)
+                global_graph = self.merge_and_serialize(global_graph, subgraph, graph_type, step, output_folder, output_file_name, serialize_every)
                 step += 1
         # Final save
-        with open("/ipazianas/pasquini/twitter_graph_dump/graph_final.pkl", "wb") as f:
+        with open(os.path.join(output_path, output_file_name), "wb") as f:
             pickle.dump(global_graph, f)
-        print("Final graph saved.")
+        self.logger.info("Final graph saved.")
 
         return global_graph
-
-    def read_csv_in_batch(self, path, batch_size = 100000, header = False):
-        nrows = 0
-        try:
-            with open(path) as f:
-                nrows = sum(1 for line in f)
-                if header:
-                    nrows -= 1
-        except FileNotFoundError:
-            self.logger.debug(f"Csv file at {path} not found.")
-        num_threads = min(4, multiprocessing.cpu_count()-2)
-        start_row = 1 if header else 0
-        task_queue = Queue()
-        lock = threading.Lock()
-
-        # Fill the task queue with start and end ranges
-        while start_row < nrows:
-            end_row = min(start_row + batch_size, nrows)
-            task_queue.put((start_row, end_row))
-            start_row = end_row
-
-        e_to_g = EdgeToGraph()
-        def worker():
-            while not task_queue.empty():
-                try:
-                    start, end = task_queue.get_nowait()
-                except:
-                    break
-                self._process_csv_chunk_2(path, start, end, header, e_to_g, lock)
-                task_queue.task_done()
-
-        threads = []
-        for _ in range(num_threads):
-            t = threading.Thread(target=worker)
-            t.start()
-            threads.append(t)
-
-        for t in threads:
-            t.join()
-
-        return e_to_g.get_graph()
-
 
     def read_csv_files_in_folder_parallel(self, path, chunk_size=100, header=False):
         """

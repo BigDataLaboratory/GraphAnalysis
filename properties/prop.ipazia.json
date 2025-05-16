@@ -53,7 +53,8 @@
         "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/response",
         "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/user_hashtag",
         "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/hashtag_cooccurrences"
-      ]
+      ],
+      "pickle_graph_file_path": "/ipazianas/pasquini/twitter_graph_dump"
     },
     "leiden": {
       "to_execute": false,

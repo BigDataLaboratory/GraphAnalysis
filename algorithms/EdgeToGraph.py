@@ -32,4 +32,36 @@ class EdgeToGraph:
                 elif edge_key == '3':
                     self.g.nodes[u]["type"] = 'h'
                     self.g.nodes[v]["type"] = 'h'
-            self.logger.info(f" Finished processing {len(edge_batch)} edges.")
+        elif self.type == 'igraph':
+            node_names = set()
+            for e in edge_batch:
+                node_names.update([e[1], e[2]])
+
+            # Add vertices with unique names
+            self.g.add_vertices(len(node_names))
+            self.g.vs["name"] = list(node_names)
+            self.g.vs["type"] = [None] * self.g.vcount()  # initialize node type
+
+            # Add edges using names (igraph resolves name->index internally)
+            edge_list = [(e[1], e[2]) for e in edge_batch]
+            self.g.add_edges(edge_list)
+            self.g.es["type"] = [e[0] for e in edge_batch]
+            self.g.es["weight"] = [int(e[3]) for e in edge_batch]
+
+            # Set node types based on edge types
+            for e in self.g.es:
+                src = e.source
+                dst = e.target
+                edge_type = e["type"]
+
+                if edge_type in ['0', '4', '5']:
+                    self.g.vs[src]["type"] = 'u'
+                    self.g.vs[dst]["type"] = 'u'
+                elif edge_type == '2':
+                    self.g.vs[src]["type"] = 'u'
+                    self.g.vs[dst]["type"] = 'h'
+                elif edge_type == '3':
+                    self.g.vs[src]["type"] = 'h'
+                    self.g.vs[dst]["type"] = 'h'
+
+        self.logger.info(f"Finished processing {len(edge_batch)} edges.")

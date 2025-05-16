@@ -1,4 +1,6 @@
 import logging
+from symbol import parameters
+
 from Utils.logging_config import setup_logging
 from collections import namedtuple
 
@@ -79,8 +81,7 @@ class GraphAnalysis:
         if community_detection:
             w = Writer()
             if self.parameters.do_read_graph_from_file:
-                g = w.read_csv_in_batch_2(self.parameters.graph_file_path[0], 100000)
-
+                g = w.read_csv_in_batch(self.parameters.graph_file_path[0], self.parameters.pickle_graph_path, 'igraph', 300000)
 
         if self.parameters.do_community_detection_combo:
             combo_instance = Combo()
