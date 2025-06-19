@@ -96,10 +96,15 @@ class Leiden:
             partition = la.find_partition(data_graph, la.CPMVertexPartition, resolution_parameter=rp_round,
                                           weights='weight',
                                           seed=0)
+            cpm = partition.quality()
+
             data_graph.vs["{}".format(rp_round)] = partition.membership
+            data_graph["cpm_quality"] = cpm
+            self.logger.info("Leiden CPM quality value is: {}, resolution parameter is {}".format(cpm, rp_round))
+
             end = time.time()
             self.logger.info(
-                "Finished Leiden with CPM Quality Function and resolution parameter = {} completato".format(rp_round))
+                "Finished Leiden with CPM Quality Function and resolution parameter = {}".format(rp_round))
             self.logger.info("Elapsed time: " + str(end - start))
             yield rp_round
 

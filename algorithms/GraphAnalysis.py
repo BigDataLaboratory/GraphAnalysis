@@ -85,8 +85,6 @@ class GraphAnalysis:
 
         if self.parameters.do_community_detection_combo:
             combo_instance = Combo()
-            # todo remove?
-            # g = combo_instance.csv_to_nx(graph)
             rps = combo_instance.compute_combo_in_parallel(g)
             for rp in rps:
                 combo_instance.export_partition(g, rp,
@@ -96,9 +94,8 @@ class GraphAnalysis:
 
         if self.parameters.do_community_detection_leiden:
             leiden_instance = Leiden()
-            g = leiden_instance.csv_to_igraph(g) #todo pay attention: switched graph with g
-            # leiden_instance.compute_pagerank(g)
-            rps = leiden_instance.compute_leiden_in_parallel(g)
+            #leiden_instance.compute_pagerank(g)
+            rps = leiden_instance.compute_leiden(g)
             for rp in rps:
                 leiden_instance.export_partition(g, rp,
                                                  self.parameters.community_leiden_prop["community_output_file_path"],

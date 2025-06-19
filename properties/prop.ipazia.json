@@ -1,10 +1,10 @@
 {
   "log": {
-    "filepath": "/ipazianas/pasquini/logs/logs_vivi.log",
+    "filepath": "/ipazianas/pasquini/logs/logs_leiden.log",
     "level": "DEBUG"
   },
   "graph_generation": {
-    "to_execute": true,
+    "to_execute": false,
     "parameters": {
       "input": {
         "type": "mongo",
@@ -48,16 +48,12 @@
     "parameters": {
       "read_from_file": true,
       "graph_file_path": [
-        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/mention",
-        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/retweet",
-        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/response",
-        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/user_hashtag",
-        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/hashtag_cooccurrences"
+        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/rt_uh_ho.csv"
       ],
       "pickle_graph_file_path": "/ipazianas/pasquini/twitter_graph_dump"
     },
     "leiden": {
-      "to_execute": false,
+      "to_execute": true,
       "parameters": {
         "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden"
       }

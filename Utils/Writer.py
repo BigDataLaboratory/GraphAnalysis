@@ -208,7 +208,6 @@ class Writer:
 
 
     def read_csv_in_batch(self, path, output_path, graph_type = 'nx', batch_size = 300000, header = False):
-        print(graph_type)
         global_graph = nx.MultiDiGraph() if graph_type == 'nx' else ig.Graph(directed=True)
         serialize_every = 30  # Save every 10 steps
 
@@ -238,7 +237,6 @@ class Writer:
         for i in range(0, len(tasks), cpu_count() - 1):
             with multiprocessing.Pool(processes=cpu_count() - 1) as pool:
                 batch_tasks = tasks[i:i + cpu_count() - 1]
-                print(batch_tasks)
                 subgraphs = pool.map(self.process_csv_chunk, batch_tasks, graph_type)
 
             for subgraph in subgraphs:
