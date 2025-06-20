@@ -1,12 +1,9 @@
 import logging
-from symbol import parameters
 
-from Utils.logging_config import setup_logging
 from collections import namedtuple
 
 from Utils.Writer import Writer
 from algorithms.CommunityText import CommunityText
-from algorithms.EdgeToGraph import EdgeToGraph
 from algorithms.GraphGeneration import GraphGeneration
 from community.Combo import Combo
 from community.Leiden import Leiden
