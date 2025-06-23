@@ -243,6 +243,9 @@ class Writer:
                 print("batch_tasks content:", batch_tasks)
                 print("cpu_count:", cpu_count(), available_cpu)
                 print("process_csv_chunk type:", type(self.process_csv_chunk))
+                print("len function:", len)
+                print("len(batch_tasks):", len(batch_tasks))
+                print("type(len(batch_tasks)):", type(len(batch_tasks)))
                 subgraphs = pool.map(self.process_csv_chunk, batch_tasks, graph_type)
 
             for subgraph in subgraphs:
