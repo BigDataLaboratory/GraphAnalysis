@@ -76,9 +76,9 @@ class GraphAnalysis:
         # Community detection
         community_detection = self.parameters.do_community_detection_combo or self.parameters.do_community_detection_leiden
         if community_detection:
-            w = Writer()
+            w = Writer('igraph')
             if self.parameters.do_read_graph_from_file:
-                g = w.read_csv_in_batch(self.parameters.graph_file_path[0], self.parameters.pickle_graph_path, 'igraph', 300000)
+                g = w.read_csv_in_batch(self.parameters.graph_file_path[0], self.parameters.pickle_graph_path, 300000)
 
         if self.parameters.do_community_detection_combo:
             combo_instance = Combo()

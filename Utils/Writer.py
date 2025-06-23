@@ -23,8 +23,9 @@ from algorithms.EdgeToGraph import EdgeToGraph
 class Writer:
     logger = logging.getLogger('Writer')
 
-    def __init__(self):
+    def __init__(self, graph_type = 'nx'):
         self.graph_degree = defaultdict(int)
+        self.graph_type = graph_type
         self.id = uuid.uuid1().hex
 
     @staticmethod
@@ -158,8 +159,7 @@ class Writer:
         file_path, chunk_size, header = args
         return self.process_csv_file(file_path, chunk_size, header)
 
-    @staticmethod
-    def process_csv_chunk(args, graph_type, header=False):
+    def process_csv_chunk(self, args, header=False):
         path, start, end = args
         with open(path, mode='r', newline='', encoding='utf-8') as f:
             reader = csv.reader(f)
@@ -175,7 +175,7 @@ class Writer:
                     break
                 batch.append(row)
                 i += 1
-        e_to_g = EdgeToGraph(graph_type)
+        e_to_g = EdgeToGraph(self.graph_type)
         e_to_g.to_graph(batch)
         return e_to_g.get_graph()
 
@@ -207,8 +207,8 @@ class Writer:
         return global_graph
 
 
-    def read_csv_in_batch(self, path, output_path, graph_type = 'nx', batch_size = 300000, header = False):
-        global_graph = nx.MultiDiGraph() if graph_type == 'nx' else ig.Graph(directed=True)
+    def read_csv_in_batch(self, path, output_path, batch_size = 300000, header = False):
+        global_graph = nx.MultiDiGraph() if self.graph_type == 'nx' else ig.Graph(directed=True)
         serialize_every = 30  # Save every 10 steps
 
         uuid = self.id
@@ -238,18 +238,10 @@ class Writer:
         for i in range(0, len(tasks), available_cpu):
             with multiprocessing.Pool(processes=available_cpu) as pool:
                 batch_tasks = tasks[i:i + available_cpu]
-                print("batch_tasks type:", type(batch_tasks))
-                print("len(batch_tasks):", len(batch_tasks))
-                print("batch_tasks content:", batch_tasks)
-                print("cpu_count:", cpu_count(), available_cpu)
-                print("process_csv_chunk type:", type(self.process_csv_chunk))
-                print("len function:", len)
-                print("len(batch_tasks):", len(batch_tasks))
-                print("type(len(batch_tasks)):", type(len(batch_tasks)))
-                subgraphs = pool.map(Writer.process_csv_chunk, batch_tasks, graph_type)
+                subgraphs = pool.map(self.process_csv_chunk, batch_tasks)
 
             for subgraph in subgraphs:
-                global_graph = self.merge_and_serialize(global_graph, subgraph, graph_type, step, output_folder, output_file_name, serialize_every)
+                global_graph = self.merge_and_serialize(global_graph, subgraph, self.graph_type, step, output_folder, output_file_name, serialize_every)
                 step += 1
         # Final save
         with open(os.path.join(output_path, output_file_name), "wb") as f:
