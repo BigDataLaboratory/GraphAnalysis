@@ -158,8 +158,8 @@ class Writer:
         file_path, chunk_size, header = args
         return self.process_csv_file(file_path, chunk_size, header)
 
-
-    def process_csv_chunk(self, args, graph_type, header=False):
+    @staticmethod
+    def process_csv_chunk(args, graph_type, header=False):
         path, start, end = args
         with open(path, mode='r', newline='', encoding='utf-8') as f:
             reader = csv.reader(f)
@@ -246,7 +246,7 @@ class Writer:
                 print("len function:", len)
                 print("len(batch_tasks):", len(batch_tasks))
                 print("type(len(batch_tasks)):", type(len(batch_tasks)))
-                subgraphs = pool.map(self.process_csv_chunk, batch_tasks, graph_type)
+                subgraphs = pool.map(Writer.process_csv_chunk, batch_tasks, graph_type)
 
             for subgraph in subgraphs:
                 global_graph = self.merge_and_serialize(global_graph, subgraph, graph_type, step, output_folder, output_file_name, serialize_every)
