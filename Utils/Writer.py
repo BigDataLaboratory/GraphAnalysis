@@ -234,9 +234,15 @@ class Writer:
 
         # Recycle pool between batches if needed
         step = 1
-        for i in range(0, len(tasks), cpu_count() - 1):
-            with multiprocessing.Pool(processes=cpu_count() - 1) as pool:
-                batch_tasks = tasks[i:i + cpu_count() - 1]
+        available_cpu = cpu_count() - 2
+        for i in range(0, len(tasks), available_cpu):
+            with multiprocessing.Pool(processes=available_cpu) as pool:
+                batch_tasks = tasks[i:i + available_cpu]
+                print("batch_tasks type:", type(batch_tasks))
+                print("len(batch_tasks):", len(batch_tasks))
+                print("batch_tasks content:", batch_tasks)
+                print("cpu_count:", cpu_count(), available_cpu)
+                print("process_csv_chunk type:", type(self.process_csv_chunk))
                 subgraphs = pool.map(self.process_csv_chunk, batch_tasks, graph_type)
 
             for subgraph in subgraphs:
