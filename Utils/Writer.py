@@ -209,7 +209,7 @@ class Writer:
 
     def read_csv_in_batch(self, path, output_path, batch_size = 300000, header = False):
         global_graph = nx.MultiDiGraph() if self.graph_type == 'nx' else ig.Graph(directed=True)
-        serialize_every = 30  # Save every 10 steps
+        serialize_every = 10  # Save every 10 steps
 
         uuid = self.id
         output_folder = os.sep.join([output_path, uuid])

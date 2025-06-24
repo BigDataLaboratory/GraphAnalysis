@@ -1,7 +1,7 @@
 {
   "log": {
     "filepath": "/ipazianas/pasquini/logs/logs_leiden.log",
-    "level": "DEBUG"
+    "level": "INFO"
   },
   "graph_generation": {
     "to_execute": false,
