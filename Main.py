@@ -71,6 +71,7 @@ if __name__ == '__main__':
 
     community_config = prop["community_detection"]["parameters"]
     do_read_graph_from_file = community_config["read_from_file"]
+    do_read_from_edge_list = community_config["read_from_edge_list"]
     graph_file_path = community_config["graph_file_path"]
     pickle_graph_path = community_config["pickle_graph_file_path"]
     community_combo_prop = prop["community_detection"]["combo"]["parameters"]
@@ -81,7 +82,6 @@ if __name__ == '__main__':
     community_col_name = users_text_config["communities"]["community_col_name"]
     do_read_communities_from_file = users_text_config["communities"]["read_communities_from_file"]
     community_file_path = users_text_config["communities"]["community_file_path"]
-
 
     do_read_maps_from_file = users_text_config["map_file_path"]["read_maps_from_file"]
     user_map = users_text_config["map_file_path"]["user_map"]
@@ -135,6 +135,7 @@ if __name__ == '__main__':
         "output_multi_graph_path",
         "output_map_prefix",
         "do_read_graph_from_file",
+        "do_read_from_edge_list",
         "graph_file_path",
         "pickle_graph_path",
         "community_combo_prop",
@@ -190,6 +191,7 @@ if __name__ == '__main__':
                    output_hashtag_cooccurrences_graph_path,
                    output_multi_graph_path,
                    output_map_prefix,
+                   do_read_from_edge_list,
                    do_read_graph_from_file,
                    graph_file_path,
                    pickle_graph_path,

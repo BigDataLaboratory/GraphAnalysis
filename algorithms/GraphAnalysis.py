@@ -76,9 +76,15 @@ class GraphAnalysis:
         # Community detection
         community_detection = self.parameters.do_community_detection_combo or self.parameters.do_community_detection_leiden
         if community_detection:
-            w = Writer('igraph')
+            if self.parameters.do_community_detection_leiden:
+                w = Writer('igraph')
+            elif self.parameters.do_community_detection_combo:
+                w = Writer('nx')
+
+            if self.parameters.do_read_from_edge_list:
+                w.read_csv_in_batch(self.parameters.graph_file_path[0], self.parameters.pickle_graph_path, 300000)
             if self.parameters.do_read_graph_from_file:
-                g = w.read_csv_in_batch(self.parameters.graph_file_path[0], self.parameters.pickle_graph_path, 300000)
+                g = w.read_pickle(self.parameters.pickle_graph_path)
 
         if self.parameters.do_community_detection_combo:
             combo_instance = Combo()
@@ -91,7 +97,6 @@ class GraphAnalysis:
 
         if self.parameters.do_community_detection_leiden:
             leiden_instance = Leiden()
-            #leiden_instance.compute_pagerank(g)
             rps = leiden_instance.compute_leiden(g)
             for rp in rps:
                 leiden_instance.export_partition(g, rp,

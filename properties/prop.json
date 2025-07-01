@@ -46,20 +46,21 @@
   },
   "community_detection": {
     "parameters": {
+      "read_from_edge_list": true,
       "read_from_file": true,
       "graph_file_path": [
         "/Users/danielepasquini/PycharmProjects/GraphAnalysis/resources/sample.csv"
       ],
-      "pickle_graph_file_path": "./resources/twitter_graph_dump"
+      "pickle_graph_file_path": "./resources/twitter_graph_dump/1"
     },
     "leiden": {
-      "to_execute": false,
+      "to_execute": true,
       "parameters": {
         "community_output_file_path": "./resources/communities_leiden"
       }
     },
     "combo": {
-      "to_execute": true,
+      "to_execute": false,
       "parameters": {
         "community_output_file_path": "./resources/communities_combo"
       }

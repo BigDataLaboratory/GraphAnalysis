@@ -184,21 +184,19 @@ class Writer:
         if graph_type == 'nx':
             global_graph = nx.compose(global_graph, subgraph)
         elif graph_type == 'igraph':
-            name_to_index = {v["name"]: v.index for v in global_graph.vs}
-            for v in subgraph.vs:
-                if v["name"] not in name_to_index:
-                    global_graph.add_vertex(name=v["name"])
-                    name_to_index[v["name"]] = global_graph.vcount() - 1
-            for e in subgraph.es:
-                src_name = subgraph.vs[e.source]["name"]
-                dst_name = subgraph.vs[e.target]["name"]
-                global_graph.add_edge(src_name, dst_name, **e.attributes())
+            if global_graph.vcount() == 0 and global_graph.ecount() == 0:
+                global_graph = subgraph
+            else:
+                global_graph = global_graph.union(subgraph)
 
         if step % serialize_every == 0:
             filename = f"{output_file_name}_snapshot_step_{step}.pkl"
             full_path = os.path.join(output_folder, filename)
-            with open(full_path, 'wb') as f:
-                pickle.dump(global_graph, f)
+            if graph_type == 'nx':
+                with open(full_path, 'wb') as f:
+                    pickle.dump(global_graph, f)
+            elif graph_type == 'igraph':
+                global_graph.write_pickle(full_path)
             self.logger.info(f"Serialized at step {step} to {filename}")
 
             # Optional: reset to free memory (keep just recent state or restart fresh)
@@ -211,10 +209,11 @@ class Writer:
         global_graph = nx.MultiDiGraph() if self.graph_type == 'nx' else ig.Graph(directed=True)
         serialize_every = 10  # Save every 10 steps
 
-        uuid = self.id
-        output_folder = os.sep.join([output_path, uuid])
+        output_folder = output_path
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
+        else:
+            raise FileExistsError(f"{output_folder} already exists!")
         output_file_name = f"{datetime.now().strftime('%Y%m%d_%H%M')}.pkl"
 
         tasks = []
@@ -244,11 +243,30 @@ class Writer:
                 global_graph = self.merge_and_serialize(global_graph, subgraph, self.graph_type, step, output_folder, output_file_name, serialize_every)
                 step += 1
         # Final save
+
         with open(os.path.join(output_path, output_file_name), "wb") as f:
             pickle.dump(global_graph, f)
         self.logger.info("Final graph saved.")
 
-        return global_graph
+    def read_pickle(self, snapshot_dir):
+        self.logger.info(f"Reading snapshot at {snapshot_dir}")
+        files = sorted(glob.glob(os.path.join(snapshot_dir, "*.pkl")))
+
+        full_g = ig.Graph(directed=True)
+
+        for fn in files:
+            if self.graph_type == "igraph":
+                sg = ig.Graph.Read_Pickle(fn)
+                if full_g.vcount() == 0 and full_g.ecount() == 0:
+                    full_g = sg
+                else:
+                    full_g = full_g.union(sg)
+            elif self.graph_type == "nx":
+                with open(fn, "rb") as f:
+                    sg = pickle.load(f)
+                full_g = full_g.union(sg)
+
+        return full_g
 
     def read_csv_files_in_folder_parallel(self, path, chunk_size=100, header=False):
         """
