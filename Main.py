@@ -7,7 +7,7 @@ from pathlib import Path
 
 from Utils.logging_config import setup_logging
 from algorithms.GraphAnalysis import GraphAnalysis
-from Utils.memory_monitor import setup_memory_logging, memory_tracker, log_memory
+from Utils.memory_monitor import setup_memory_logging
 
 
 os.chdir(Path(__file__).parent)
@@ -51,6 +51,7 @@ if __name__ == '__main__':
     source_collection = config["collection"]
     source_chunk_start_date = datetime.strptime(config["chunk_start_date"], '%d/%m/%Y')
     source_chunk_end_date = datetime.strptime(config["chunk_end_date"], '%d/%m/%Y')
+    source_method = config["method"]
 
     do_retweet_graph = prop["graph_generation"]["parameters"]["graph_type"]["retweet"]
     do_tweet_retweet_graph = prop["graph_generation"]["parameters"]["graph_type"]["tweet_retweet"]
@@ -120,6 +121,7 @@ if __name__ == '__main__':
         "source_collection",
         "source_chunk_start_date",
         "source_chunk_end_date",
+        "source_method",
         "do_retweet_graph",
         "do_tweet_retweet_graph",
         "do_hashtag_graph",
@@ -177,6 +179,7 @@ if __name__ == '__main__':
                    source_collection,
                    source_chunk_start_date,
                    source_chunk_end_date,
+                   source_method,
                    do_retweet_graph,
                    do_tweet_retweet_graph,
                    do_hashtag_graph,

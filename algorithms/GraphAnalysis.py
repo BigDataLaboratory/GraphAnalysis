@@ -25,6 +25,7 @@ class GraphAnalysis:
                                  collection=self.parameters.source_collection,
                                  start_date=self.parameters.source_chunk_start_date,
                                  end_date=self.parameters.source_chunk_end_date,
+                                 method=self.parameters.source_method,
                                  input_type=self.parameters.source_input_type,
                                  output_file_path=self.parameters.output_graph_path,
                                  retweet=self.parameters.do_retweet_graph,
@@ -71,7 +72,7 @@ class GraphAnalysis:
                  'userMentionEntities'
                  ]
             """
-            gg.query_data_in_chunks(w, s)
+            gg.query_data_in_chunks(w, s, method=self.parameters.source_method)
 
         # Community detection
         community_detection = self.parameters.do_community_detection_combo or self.parameters.do_community_detection_leiden
@@ -82,7 +83,7 @@ class GraphAnalysis:
                 w = Writer('nx')
 
             if self.parameters.do_read_from_edge_list:
-                w.read_csv_in_batch(self.parameters.graph_file_path[0], self.parameters.pickle_graph_path, 300000)
+                w.read_csv_in_batch(self.parameters.graph_file_path[0], self.parameters.pickle_graph_path, 100)
             if self.parameters.do_read_graph_from_file:
                 g = w.read_pickle(self.parameters.pickle_graph_path)
 

@@ -1,10 +1,10 @@
 {
   "log": {
-    "filepath": "/ipazianas/pasquini/logs/logs_leiden.log",
+    "filepath": "/ipazianas/pasquini/logs/temporal_logs_leiden.log",
     "level": "INFO"
   },
   "graph_generation": {
-    "to_execute": false,
+    "to_execute": true,
     "parameters": {
       "input": {
         "type": "mongo",
@@ -15,9 +15,10 @@
           "authName": "twitter",
           "authMechanism": "SCRAM-SHA-1",
           "db_name": "twitter",
-          "collection": "vivi",
+          "collection": "QCPS_2",
           "chunk_start_date": "23/02/2022",
-          "chunk_end_date": "16/01/2023"
+          "chunk_end_date": "26/02/2022",
+          "method": "day"
         }
     },
       "graph_type": {
@@ -46,15 +47,15 @@
   },
   "community_detection": {
     "parameters": {
-      "read_from_edge_list": true,
-      "read_from_file": true,
+      "read_from_edge_list": false,
+      "read_from_file": false,
       "graph_file_path": [
-        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/rt_uh_ho.csv"
+        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/do_not_nothing.csv"
       ],
       "pickle_graph_file_path": "/ipazianas/pasquini/twitter_graph_dump/rt_uh_ho"
     },
     "leiden": {
-      "to_execute": true,
+      "to_execute": false,
       "parameters": {
         "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden"
       }
