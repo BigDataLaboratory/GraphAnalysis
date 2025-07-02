@@ -5,6 +5,7 @@ import uuid
 from collections import defaultdict
 from datetime import timedelta, timezone, datetime
 from enum import Enum
+from zoneinfo import ZoneInfo
 
 import pytz
 from pymongo import ASCENDING
@@ -114,7 +115,8 @@ class GraphGeneration(MongoConnection):
         o = []
         m = set()
 
-        date = int(datetime(d["_id"].year, d["_id"].month, d["_id"].day, tzinfo=timezone.utc).timestamp())
+        date = datetime(d["_id"])
+        tz_rome = ZoneInfo("Europe/Rome")
 
         for tweet in d['docs']:
             n_user_id = Utils.hash(tweet['user']['id'])
@@ -122,24 +124,24 @@ class GraphGeneration(MongoConnection):
 
             if tweet.get('retweeted_status', None) is not None and self.retweet:
                 relationship_u_rt = 0
-                n_rt_user_id = Utils.hash(d['retweeted_status']['user']['id'])
+                n_rt_user_id = Utils.hash(tweet['retweeted_status']['user']['id'])
                 e_rt = n_user_id, n_rt_user_id, date, relationship_u_rt
                 o.append(e_rt)
-                m.add((d['retweeted_status']['user']['id'], n_rt_user_id, 1))
+                m.add((tweet['retweeted_status']['user']['id'], n_rt_user_id, 1))
 
-            if d.get('retweeted_status', None) is not None and self.tweet_retweet:
+            if tweet.get('retweeted_status', None) is not None and self.tweet_retweet:
                 relationship_t_rt = 1
                 n_tweet_id = Utils.hash(tweet['id'])
                 n_rt_tweet_id = Utils.hash(tweet['retweeted_status']['id'])
-                a_created_at_tweet = tweet['created_at'].timestamp()
-                a_created_at_rt = tweet['retweeted_status']['created_at'].timestamp()
+                a_created_at_tweet = tweet['created_at'].astimezone(tz_rome).timestamp()
+                a_created_at_rt = tweet['retweeted_status']['created_at'].astimezone(tz_rome).timestamp()
                 e_tweet_retweet = (
                     n_tweet_id, n_rt_tweet_id, date, (a_created_at_tweet, a_created_at_rt), relationship_t_rt)
                 o.append(e_tweet_retweet)
                 m.add((tweet['id'], n_tweet_id, 2))
                 m.add((tweet['retweeted_status']['id'], n_rt_tweet_id, 2))
 
-            if d.get('hashtagEntities', None) is not None and self.user_hashtag:
+            if tweet.get('hashtagEntities', None) is not None and self.user_hashtag:
                 relationship = 2
                 n_ht = tweet['hashtagEntities'].lower().split('|') if isinstance(tweet['hashtagEntities'], str) else []
                 ht = [(n_user_id, Utils.compute_hash(x), date, relationship) for x in n_ht]
@@ -147,7 +149,7 @@ class GraphGeneration(MongoConnection):
                 for x in n_ht:
                     m.add((x, Utils.compute_hash(x), 3))
 
-            if d.get('hashtagEntities', None) is not None and self.hashtag_cooccurrences:
+            if tweet.get('hashtagEntities', None) is not None and self.hashtag_cooccurrences:
                 relationship = 3
                 ht_combinations = Utils.combinations_list(tweet['hashtagEntities'].lower().split('|')) if isinstance(
                     tweet['hashtagEntities'], str) else []
@@ -156,13 +158,13 @@ class GraphGeneration(MongoConnection):
                 o.extend(e_hts_natural)
                 o.extend(e_hts_inverse)
 
-            if d.get('in_reply_to_user_id', -1) != -1 and self.response:
+            if tweet.get('in_reply_to_user_id', -1) != -1 and self.response:
                 relationship = 4
                 n_reply_user_id = Utils.hash(tweet['in_reply_to_user_id'])
                 e_reply = n_user_id, n_reply_user_id, date, relationship
                 o.append(e_reply)
 
-            if d.get('userMentionEntities', None) is not None and self.mention:
+            if tweet.get('userMentionEntities', None) is not None and self.mention:
                 relationship = 5
                 n_mentions = tweet['userMentionEntities'].lower().split('|') if isinstance(tweet['userMentionEntities'],
                                                                                        str) else []
@@ -325,9 +327,10 @@ class GraphGeneration(MongoConnection):
             bucket_docs = []
             intermediate_map = set()
             intermediate_result = {}
+            tz_rome = ZoneInfo("Europe/Rome")
             for i, document in enumerate(cursor, 1):
                 print(type(document["created_at"]))
-                day = document["created_at"].astimezone(pytz.timezone("Europe/Rome")).date()
+                day = document["created_at"].astimezone(tz_rome).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
                 if current_day is None:
                     current_day = day
                 if day != current_day:
