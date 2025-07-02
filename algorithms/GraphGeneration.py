@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import timedelta, timezone
 from enum import Enum
 
+import pytz
 from pymongo import ASCENDING
 
 from Utils.Const import Const as c
@@ -285,10 +286,10 @@ class GraphGeneration(MongoConnection):
         d = {"created_at": {"$gte": start_id, "$lt": end_id}}
         where_f = {'$and': [where, d]}
 
-        if method != "full":
+        if method == "old":
             pipeline = [
                 {"$match": where_f},
-                {"$project": project} if project else {"$match": {}},
+                {"$project": project},
                 {"$group": {
                     "_id": {
                         "$dateTrunc": {
@@ -316,6 +317,41 @@ class GraphGeneration(MongoConnection):
                     self.save_bucket_checkpoint(intermediate_result, intermediate_map, process_id)
                     intermediate_result = {}
                     intermediate_map = set()
+            if intermediate_result:
+                self.save_bucket_checkpoint(intermediate_result, intermediate_map, process_id)
+        elif method != "full":
+            cursor = c.find(where_f, project).sort('created_at', ASCENDING).batch_size(batch_size)
+            current_day = None
+            bucket_docs = []
+            intermediate_map = set()
+            intermediate_result = {}
+            for i, document in enumerate(cursor, 1):
+                day = document["created_at"].astimezone(pytz.timezone("Europe/Rome")).date()
+                if current_day is None:
+                    current_day = day
+                if day != current_day:
+                    day_bucket = {"_id": current_day, "docs": bucket_docs}
+                    # flush yesterday
+                    edges, maps = self.process_bucket_document(day_bucket)
+                    intermediate_result = edges
+                    intermediate_map.update(maps)
+
+                    # Save checkpoint after every `checkpoint_interval` documents
+                    if i % checkpoint_interval == 0:
+                        self.save_bucket_checkpoint(intermediate_result, intermediate_map, process_id)
+                        intermediate_result = {}
+                        intermediate_map = set()
+                    bucket_docs = []  # start new bucket
+                    current_day = day
+
+                bucket_docs.append(document)
+
+            # flush the last day
+            if bucket_docs:
+                day_bucket = {"_id": current_day, "docs": bucket_docs}
+                edges, maps = self.process_bucket_document(day_bucket)
+                intermediate_result = edges
+                intermediate_map.update(maps)
             if intermediate_result:
                 self.save_bucket_checkpoint(intermediate_result, intermediate_map, process_id)
 
