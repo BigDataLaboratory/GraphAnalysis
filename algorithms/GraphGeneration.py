@@ -3,7 +3,7 @@ import multiprocessing
 import os
 import uuid
 from collections import defaultdict
-from datetime import timedelta, timezone
+from datetime import timedelta, timezone, datetime
 from enum import Enum
 
 import pytz
@@ -114,8 +114,7 @@ class GraphGeneration(MongoConnection):
         o = []
         m = set()
 
-        print(type(d["_id"]))
-        date = d["_id"].replace(tzinfo=timezone.utc).timestamp()
+        date = int(datetime(d["_id"].year, d["_id"].month, d["_id"].day, tzinfo=timezone.utc).timestamp())
 
         for tweet in d['docs']:
             n_user_id = Utils.hash(tweet['user']['id'])
@@ -327,6 +326,7 @@ class GraphGeneration(MongoConnection):
             intermediate_map = set()
             intermediate_result = {}
             for i, document in enumerate(cursor, 1):
+                print(type(document["created_at"]))
                 day = document["created_at"].astimezone(pytz.timezone("Europe/Rome")).date()
                 if current_day is None:
                     current_day = day
