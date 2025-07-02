@@ -114,6 +114,7 @@ class GraphGeneration(MongoConnection):
         o = []
         m = set()
 
+        print(type(d["_id"]))
         date = d["_id"].replace(tzinfo=timezone.utc).timestamp()
 
         for tweet in d['docs']:
