@@ -115,7 +115,7 @@ class GraphGeneration(MongoConnection):
         o = []
         m = set()
 
-        date = datetime(d["_id"])
+        date = d["_id"]
         tz_rome = ZoneInfo("Europe/Rome")
 
         for tweet in d['docs']:
