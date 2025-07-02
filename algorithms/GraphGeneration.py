@@ -329,7 +329,6 @@ class GraphGeneration(MongoConnection):
             intermediate_result = {}
             tz_rome = ZoneInfo("Europe/Rome")
             for i, document in enumerate(cursor, 1):
-                print(type(document["created_at"]))
                 day = document["created_at"].astimezone(tz_rome).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
                 if current_day is None:
                     current_day = day
