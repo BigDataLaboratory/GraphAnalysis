@@ -1,6 +1,9 @@
 import pymongo.errors
 from pymongo import MongoClient
 
+import logging
+
+
 class MongoConnection:
     
     logger = logging.getLogger('MongoConnection')

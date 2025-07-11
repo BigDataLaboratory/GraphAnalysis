@@ -1,10 +1,10 @@
 {
   "log": {
-    "filepath": "/ipazianas/pasquini/logs/daily_logs.log",
+    "filepath": "/ipazianas/pasquini/logs/leiden-daily_logs.log",
     "level": "INFO"
   },
   "graph_generation": {
-    "to_execute": true,
+    "to_execute": false,
     "parameters": {
       "input": {
         "type": "mongo",
@@ -47,18 +47,18 @@
   },
   "community_detection": {
     "parameters": {
-      "read_from_edge_list": false,
-      "read_from_file": false,
-      "temporal": false,
+      "read_from_edge_list": true,
+      "read_from_file": true,
+      "temporal": true,
       "graph_file_path": [
-        "/ipazianas/pasquini/output_graph_analysis/ten_days/e1ea085a5c0511f091ac08f1eaf4fe18/graph/graph_ten_days.csv"
+        "/ipazianas/pasquini/output_graph_analysis/feb-may_day_2022/913418945e5b11f0bc1108f1eaf4fe18/graph/temporal_graph.csv"
       ],
-      "pickle_graph_file_path": "/ipazianas/pasquini/twitter_graph_dump/retweet_temporal_6"
+      "pickle_graph_file_path": "/ipazianas/pasquini/twitter_graph_dump/feb-may-day-2022"
     },
     "leiden": {
-      "to_execute": false,
+      "to_execute": true,
       "parameters": {
-        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/temporal"
+        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/temporal/feb-may-day-2022"
       }
     },
     "combo": {
