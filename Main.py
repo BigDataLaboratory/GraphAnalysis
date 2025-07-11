@@ -13,6 +13,16 @@ from Utils.memory_monitor import setup_memory_logging
 os.chdir(Path(__file__).parent)
 
 def get_properties(file_path="properties/prop.json"):
+    """
+    Reads properties from a JSON file.
+    The properties file should contain configuration settings for the application.
+
+    :param file_path: Path to the properties file. Defaults to 'properties/prop.json'.
+    :return: A dictionary containing the properties read from the file.
+
+    :raises FileNotFoundError: If the specified file does not exist.
+    :raises json.JSONDecodeError: If the file is not a valid JSON.
+    """
     import json
     with open(file_path) as f:
         properties = json.load(f)
@@ -20,6 +30,9 @@ def get_properties(file_path="properties/prop.json"):
 
 
 if __name__ == '__main__':
+    # Parse command line arguments
+    # This allows the user to specify a properties file path via command line.
+    # If no path is provided, it defaults to 'properties/prop.json'.
     parser = argparse.ArgumentParser(description="Command line args")
     parser.add_argument('--properties', type=str, help='Properties file path')
     args = parser.parse_args()
@@ -29,11 +42,12 @@ if __name__ == '__main__':
     else:
         prop: dict = get_properties()
 
-
+    # Setup logging
     setup_logging(prop["log"]["filepath"])
     logger = logging.getLogger(__name__)
     setup_memory_logging(prop["log"]["filepath"])
 
+    # Extract properties for graph analysis
     do_graph_generation = prop["graph_generation"]["to_execute"]
     do_community_detection_leiden = prop["community_detection"]["leiden"]["to_execute"]
     do_community_detection_combo = prop["community_detection"]["combo"]["to_execute"]
@@ -75,6 +89,7 @@ if __name__ == '__main__':
     do_read_from_edge_list = community_config["read_from_edge_list"]
     graph_file_path = community_config["graph_file_path"]
     pickle_graph_path = community_config["pickle_graph_file_path"]
+    temporal = community_config["temporal"]
     community_combo_prop = prop["community_detection"]["combo"]["parameters"]
     community_leiden_prop = prop["community_detection"]["leiden"]["parameters"]
 
@@ -140,6 +155,7 @@ if __name__ == '__main__':
         "do_read_from_edge_list",
         "graph_file_path",
         "pickle_graph_path",
+        "temporal",
         "community_combo_prop",
         "community_leiden_prop",
         "community_indexes",
@@ -194,10 +210,11 @@ if __name__ == '__main__':
                    output_hashtag_cooccurrences_graph_path,
                    output_multi_graph_path,
                    output_map_prefix,
-                   do_read_from_edge_list,
                    do_read_graph_from_file,
+                   do_read_from_edge_list,
                    graph_file_path,
                    pickle_graph_path,
+                   temporal,
                    community_combo_prop,
                    community_leiden_prop,
                    community_indexes,
@@ -226,23 +243,3 @@ if __name__ == '__main__':
         graph_analysis.run()
     except Exception as e:
         raise
-
-    """
-    cluster_map = ClusterMap()
-    clusters = cluster_map.read_cluster_file(prop["output"]["path"] + 'clusters_general.csv')
-    maps = cluster_map.read_map_file(
-        prop["output"]["path"] + prop["output"]["map_file_name_prefix"] + "hashtag_hash.csv")
-    clusters_maps_df = cluster_map.from_hash_to_id(clusters, maps)
-    clusters_grouped_df = cluster_map.group_and_count_by_cluster(clusters_maps_df)
-
-    Utils.persist_to_file(clusters_maps_df, prop["output"]["path"] + 'cluster_wo_hash')
-    Utils.persist_to_file(clusters_grouped_df, prop["output"]["path"] + 'cluster_grouped_count')
-
-
-    cl = leiden_instance.hash_to_name(df, prop["output"]["path"] + prop["output"]["map_file_name_prefix"]
-                                      + "user.csv", prop["output"]["path"] + prop["output"]["map_file_name_prefix"]
-                                        + "hashtag_hash.csv", prop["output"]["path"] + prop["output"]["map_file_name_prefix"]
-                                        + "user_screen_name_user_id.csv")
-    Utils.persist_to_file(cl[0], prop["output"]["path"] + prop["output"]["clusters_file_name_prefix"] + "user")
-    Utils.persist_to_file(cl[1], prop["output"]["path"] + prop["output"]["clusters_file_name_prefix"] + "hashtag")
-    """

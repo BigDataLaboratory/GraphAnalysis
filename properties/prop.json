@@ -49,6 +49,7 @@
     "parameters": {
       "read_from_edge_list": false,
       "read_from_file": false,
+      "temporal": false,
       "graph_file_path": [
         "/Users/danielepasquini/PycharmProjects/GraphAnalysis/resources/sample.csv"
       ],

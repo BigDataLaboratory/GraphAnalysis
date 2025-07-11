@@ -6,14 +6,23 @@ import igraph as ig
 class EdgeToGraph:
     logger = logging.getLogger('EdgeToGraph')
 
-    def __init__(self, type = 'nx'):
+    def __init__(self, type = 'nx', temporal = False):
         self.type = type
         self.g = nx.MultiDiGraph() if type == 'nx' else ig.Graph(directed=True)
+        self.temporal_graph = temporal
 
     def get_graph(self):
         return self.g
 
     def to_graph(self, edge_batch = None):
+        """
+        Converts a batch of edges into a graph structure.
+        The edges are expected to be in the format:
+        [(edge_type, source_node, target_node, weight), ...]
+
+        :param edge_batch: A list of edges to be added to the graph.
+        :raises AttributeError: If edge_batch is None.
+        """
         if edge_batch == None:
             raise AttributeError('edge_batch cannot be None')
 
@@ -46,7 +55,9 @@ class EdgeToGraph:
             edge_list = [(e[1], e[2]) for e in edge_batch]
             self.g.add_edges(edge_list)
             self.g.es["type"] = [e[0] for e in edge_batch]
-            self.g.es["weight"] = [int(e[3]) for e in edge_batch]
+            self.g.es["weight"] = [float(e[4]) for e in edge_batch] if self.temporal_graph else [float(e[3]) for e in edge_batch]
+            if self.temporal_graph:
+                self.g.es["time"] = [float(e[3]) for e in edge_batch] # Add temporal information if applicable
 
             # Set node types based on edge types
             for e in self.g.es:

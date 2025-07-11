@@ -13,6 +13,14 @@ class TopicGenerator:
         self.docs = docs
 
     def topic_modeling(self):
+        """
+        Generates topics from the provided documents using BERTopic.
+        This method initializes a BERTopic model with multilingual support and uses Maximal Marginal Relevance
+        for topic representation. It fits the model to the documents and returns the model, topics,
+        and probabilities of the topics.
+
+        :return: A tuple containing the BERTopic model, topics, and probabilities.
+        """
         mmr = MaximalMarginalRelevance(diversity=0.3)
         self.topic_model = BERTopic(language="multilingual", representation_model=mmr)
         self.topics, self.probs = self.topic_model.fit_transform(self.docs)

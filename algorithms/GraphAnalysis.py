@@ -22,6 +22,7 @@ class GraphAnalysis:
                                  password=self.parameters.source_password,
                                  auth_source=self.parameters.source_auth_source,
                                  auth_mechanism=self.parameters.source_auth_mechanism,
+                                 database_name=self.parameters.source_db_name,
                                  collection=self.parameters.source_collection,
                                  start_date=self.parameters.source_chunk_start_date,
                                  end_date=self.parameters.source_chunk_end_date,
@@ -34,8 +35,6 @@ class GraphAnalysis:
                                  hashtag_cooccurrences=self.parameters.do_hashtag_cooccurrences_graph,
                                  response=self.parameters.do_response_graph,
                                  mention=self.parameters.do_mention_graph)
-
-            gg.connect(self.parameters.source_db_name)
 
             """
             use it when mongo is available again
@@ -78,12 +77,12 @@ class GraphAnalysis:
         community_detection = self.parameters.do_community_detection_combo or self.parameters.do_community_detection_leiden
         if community_detection:
             if self.parameters.do_community_detection_leiden:
-                w = Writer('igraph')
+                w = Writer('igraph', self.parameters.temporal)
             elif self.parameters.do_community_detection_combo:
                 w = Writer('nx')
 
             if self.parameters.do_read_from_edge_list:
-                w.read_csv_in_batch(self.parameters.graph_file_path[0], self.parameters.pickle_graph_path, 100)
+                w.read_csv_in_batch(self.parameters.graph_file_path[0], self.parameters.pickle_graph_path, 300000)
             if self.parameters.do_read_graph_from_file:
                 g = w.read_pickle(self.parameters.pickle_graph_path)
 
@@ -98,12 +97,19 @@ class GraphAnalysis:
 
         if self.parameters.do_community_detection_leiden:
             leiden_instance = Leiden()
-            rps = leiden_instance.compute_leiden(g)
-            for rp in rps:
-                leiden_instance.export_partition(g, rp,
-                                                 self.parameters.community_leiden_prop["community_output_file_path"],
-                                                 ["name", "type", "{}".format(rp)])
-            leiden_instance.export_graph(g, self.parameters.community_leiden_prop["community_output_file_path"])
+            if not self.parameters.temporal:
+                rps = leiden_instance.compute_leiden(g, (0.1, 1.0))
+                for rp in rps:
+                    leiden_instance.export_partition(g, rp,
+                                                    self.parameters.community_leiden_prop["community_output_file_path"],
+                                                    ["name", "type", "{}".format(rp)])
+                leiden_instance.export_graph(g, self.parameters.community_leiden_prop["community_output_file_path"])
+            else:
+                rps = leiden_instance.compute_leiden_temporal(g, (0.1, 1.0))
+                for rp in rps:
+                    leiden_instance.export_partition(g, rp,
+                                                    self.parameters.community_leiden_prop["community_output_file_path"],
+                                                    ["name", "type", "{}".format(rp)])
 
         # Get text data from raw dataset
         if self.parameters.do_get_text:

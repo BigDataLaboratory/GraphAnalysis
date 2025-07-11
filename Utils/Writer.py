@@ -23,19 +23,40 @@ from algorithms.EdgeToGraph import EdgeToGraph
 class Writer:
     logger = logging.getLogger('Writer')
 
-    def __init__(self, graph_type = 'nx'):
+    def __init__(self, graph_type = 'nx', temporal=False):
         self.graph_degree = defaultdict(int)
         self.graph_type = graph_type
+        self.temporal_graph = temporal
         self.id = uuid.uuid1().hex
 
     @staticmethod
     def write_on_csv(file_path, rows):
+        """
+        Writes a list of rows to a CSV file.
+        Each row is expected to be a list of values that will be written as a single row in the CSV file.
+        If the file does not exist, it will be created. If it exists, new rows will be appended to the end of the file.
+
+        :param file_path: Path to the CSV file where the rows will be written.
+        :param rows: List of rows to write to the CSV file. Each row should be a list of values.
+        
+        :raises IOError: If there is an error writing to the file.
+        :raises FileNotFoundError: If the specified file path does not exist.
+        :raises Exception: For any other exceptions that may occur during the file writing process.
+
+        """
         with open(file_path, 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerows(rows)
 
     @staticmethod
     def create_dirs(output_path, uuid):
+        """
+        Creates directories for checkpoints and output files based on the provided path and UUID.
+        If the directories do not exist, they are created.
+
+        :param output_path: Path where the directories should be created.
+        :param uuid: Unique identifier for the directories.
+        """
         checkpoint_folder = os.sep.join([output_path, c.CHECKPOINT_FOLDER, uuid])
         output_folder = os.sep.join([output_path, uuid])
         if not os.path.exists(checkpoint_folder):
@@ -45,17 +66,37 @@ class Writer:
 
     @staticmethod
     def create_dir(output_path, uuid):
+        """
+        Creates a directory for output files based on the provided path and UUID.
+        If the directory does not exist, it is created.
+
+        :param output_path: Path where the directory should be created.
+        :param uuid: Unique identifier for the directory.
+        """
         output_folder = os.sep.join([output_path, uuid])
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
 
     @staticmethod
     def list_checkpoint_files(dir_path):
+        """
+        List all checkpoint files in the specified directory.
+
+        :param dir_path: Path to the directory containing checkpoint files.
+        :return: List of file paths in the directory.
+        """
         return glob.glob(dir_path)
 
     @staticmethod
     def load_checkpoint_file(file_path):
-        """Load a checkpoint file and return rows as a list of tuples."""
+        """
+        Load a checkpoint file and return rows as a list of tuples.
+        This method reads a CSV file and returns its content as a list of rows,
+        where each row is represented as a list of values.
+
+        :param file_path: Path to the checkpoint file.
+        :return: List of rows from the CSV file.
+        """
         with open(file_path, mode='r', newline='', encoding='utf-8') as f:
             reader = csv.reader(f)
             return [list(row) for row in reader]
@@ -64,18 +105,21 @@ class Writer:
     def process_chunk(rows):
         """
         Process a chunk of rows from a CSV file.
-
-        Args:
-        - rows: A list of rows (as lists) from the CSV file.
-
-        Returns:
-        - Processed data for the chunk.
+        
+        :param rows: List of rows to process.
+        :return: Processed rows as a list of tuples.
         """
-        # Example: Transform rows or filter data
-        return [tuple(row) for row in rows if row]  # Keep non-empty rows as an example
+        return [tuple(row) for row in rows if row]
 
     @staticmethod
     def export_nx_nodes_with_attributes(g, file_path, attr_list=None):
+        """
+        Exports nodes with attributes from a NetworkX graph to a CSV file.
+
+        :param g: The igraph graph object.
+        :param file_path: Path to the output CSV file.
+        :param attr_list: List of attributes to export. If None, all attributes are exported
+        """
         attributes = set()
         if not attr_list:
             for _, data in g.nodes(data=True):
@@ -97,6 +141,13 @@ class Writer:
 
     @staticmethod
     def export_nodes_with_attributes(g, file_path, attr_list=None):
+        """
+        Exports nodes with attributes from an igraph graph to a CSV file.
+
+        :param g: The igraph graph object.
+        :param file_path: Path to the output CSV file.
+        :param attr_list: List of attributes to export. If None, all attributes are exported
+        """
         # Get all attributes for vertices
         attributes = g.vs.attributes() if not attr_list else attr_list
 
@@ -160,6 +211,15 @@ class Writer:
         return self.process_csv_file(file_path, chunk_size, header)
 
     def process_csv_chunk(self, args, header=False):
+        """
+        Processes a chunk of a CSV file to extract edges and create a graph.
+        This method reads a specified range of rows from the CSV file, processes them,
+        and converts them into a graph structure using the EdgeToGraph class.
+
+        :param args: Tuple containing the file path, start row, and end row.
+        :param header: Boolean indicating if the CSV file has a header row.
+        :return: Graph object created from the processed chunk.
+        """
         path, start, end = args
         with open(path, mode='r', newline='', encoding='utf-8') as f:
             reader = csv.reader(f)
@@ -175,7 +235,7 @@ class Writer:
                     break
                 batch.append(row)
                 i += 1
-        e_to_g = EdgeToGraph(self.graph_type)
+        e_to_g = EdgeToGraph(self.graph_type, self.temporal_graph)
         e_to_g.to_graph(batch)
         return e_to_g.get_graph()
 
@@ -187,7 +247,44 @@ class Writer:
             if global_graph.vcount() == 0 and global_graph.ecount() == 0:
                 global_graph = subgraph
             else:
-                global_graph = global_graph.union(subgraph)
+                graphs = [global_graph, subgraph]
+                names, types = [], []
+                name2idx     = {}
+
+                for g in graphs:
+                    for v in g.vs:
+                        n = v["name"]
+                        if n not in name2idx:               # first time we see this name
+                            name2idx[n] = len(names)
+                            names.append(n)
+                            types.append(v["type"])
+                        else:
+                            assert v["type"] == types[name2idx[n]], f"vertex {n!r} carries inconsistent type"
+                
+                master = ig.Graph(directed=True)
+                master.add_vertices(len(names))
+                master.vs["name"] = names
+                master.vs["type"] = types
+
+                sources, targets, weights, types_edge  = [], [], [], []
+                times = [] if self.temporal_graph else None
+
+                for g in graphs:
+                    # translate local vertex IDs to master IDs *vectorised*
+                    src_ids = [name2idx[n] for n in g.vs["name"]]          # list is OK once
+                    for e in g.es:
+                        sources.append(src_ids[e.source])
+                        targets.append(src_ids[e.target])
+                    if self.temporal_graph:
+                        times.extend(g.es["time"])
+                    types_edge.extend(g.es["type"])
+                    weights.extend(g.es["weight"])
+                master.add_edges(list(zip(sources, targets)))
+                if self.temporal_graph:
+                    master.es["time"] = times
+                master.es["type"]   = types_edge
+                master.es["weight"] = weights
+                global_graph = master
 
         if step % serialize_every == 0:
             filename = f"{output_file_name}_snapshot_step_{step}.pkl"
@@ -206,6 +303,16 @@ class Writer:
 
 
     def read_csv_in_batch(self, path, output_path, batch_size = 300000, header = False):
+        """
+        Reads a CSV file in batches and processes it to create a graph.
+        The graph is built using NetworkX or igraph based on the specified graph type.
+
+        :param path: Path to the CSV file to read.
+        :param output_path: Path to save the serialized graph.
+        :param batch_size: Number of rows to read in each batch.
+        :param header: Boolean indicating if the CSV file has a header row.
+
+        """
         global_graph = nx.MultiDiGraph() if self.graph_type == 'nx' else ig.Graph(directed=True)
         serialize_every = 10  # Save every 10 steps
 
@@ -244,11 +351,22 @@ class Writer:
                 step += 1
         # Final save
 
-        with open(os.path.join(output_path, output_file_name), "wb") as f:
-            pickle.dump(global_graph, f)
+        filename = f"{output_file_name}_final.pkl"
+        full_path = os.path.join(output_folder, filename)
+        with open(full_path, "wb") as f:
+            if self.graph_type == 'nx':
+                pickle.dump(global_graph, f)
+            elif self.graph_type == 'igraph':
+                global_graph.write_pickle(full_path)
         self.logger.info("Final graph saved.")
 
     def read_pickle(self, snapshot_dir):
+        """
+        Reads a snapshot of the graph from pickle files in the specified directory.
+
+        :param snapshot_dir: Directory containing the snapshot files.
+        :return: Full graph constructed from the snapshot files.
+        """
         self.logger.info(f"Reading snapshot at {snapshot_dir}")
         files = sorted(glob.glob(os.path.join(snapshot_dir, "*.pkl")))
 
@@ -260,12 +378,51 @@ class Writer:
                 if full_g.vcount() == 0 and full_g.ecount() == 0:
                     full_g = sg
                 else:
-                    full_g = full_g.union(sg)
+                    graphs = [full_g, sg]
+                    names, types = [], []
+                    name2idx     = {}
+
+                    for g in graphs:
+                        for v in g.vs:
+                            n = v["name"]
+                            if n not in name2idx:               # first time we see this name
+                                name2idx[n] = len(names)
+                                names.append(n)
+                                types.append(v["type"])
+                            else:
+                                assert v["type"] == types[name2idx[n]], f"vertex {n!r} carries inconsistent type"
+                    
+                    master = ig.Graph(directed=True)
+                    master.add_vertices(len(names))
+                    master.vs["name"] = names
+                    master.vs["type"] = types
+
+                    sources, targets = [], []
+                    types_edge,  weights  = [], []
+
+                    times = [] if self.temporal_graph else None
+
+                    for g in graphs:
+                        # translate local vertex IDs to master IDs *vectorised*
+                        src_ids = [name2idx[n] for n in g.vs["name"]]          # list is OK once
+                        for e in g.es:
+                            sources.append(src_ids[e.source])
+                            targets.append(src_ids[e.target])
+                        types_edge.extend(g.es["type"])
+                        weights.extend(g.es["weight"])
+                        if self.temporal_graph:
+                            times.extend(g.es["time"])
+                    master.add_edges(list(zip(sources, targets)))
+                    master.es["type"]   = types_edge
+                    master.es["weight"] = weights
+                    if self.temporal_graph:
+                        master.es["time"] = times
+                    full_g = master
             elif self.graph_type == "nx":
                 with open(fn, "rb") as f:
                     sg = pickle.load(f)
                 full_g = full_g.union(sg)
-
+        self.logger.info("Full graph loaded with {} vertices and {} edges".format(full_g.vcount(), full_g.ecount()))
         return full_g
 
     def read_csv_files_in_folder_parallel(self, path, chunk_size=100, header=False):

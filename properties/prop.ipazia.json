@@ -1,6 +1,6 @@
 {
   "log": {
-    "filepath": "/ipazianas/pasquini/logs/temporal_logs_leiden.log",
+    "filepath": "/ipazianas/pasquini/logs/daily_logs.log",
     "level": "INFO"
   },
   "graph_generation": {
@@ -9,28 +9,28 @@
       "input": {
         "type": "mongo",
         "conf": {
-          "uri": "mongodb://127.0.0.1:27020/",
+          "uri": "mongodb://127.0.0.1:27021/",
           "username": "twitter",
           "password": "twitter",
           "authName": "twitter",
           "authMechanism": "SCRAM-SHA-1",
           "db_name": "twitter",
           "collection": "QCPS_2",
-          "chunk_start_date": "23/02/2022",
-          "chunk_end_date": "26/02/2022",
+          "chunk_start_date": "22/02/2022",
+          "chunk_end_date": "30/04/2022",
           "method": "day"
         }
     },
       "graph_type": {
         "retweet": true,
-        "tweet_retweet": true,
+        "tweet_retweet": false,
         "user_hashtag": true,
         "response": true,
-        "mention": true,
+        "mention": false,
         "hashtag_cooccurrences": true
       },
       "output": {
-        "path": "/ipazianas/pasquini/output_graph_analysis",
+        "path": "/ipazianas/pasquini/output_graph_analysis/feb-may_day_2022",
         "graph_file_name": {
           "retweet": "retweet",
           "mention": "mention",
@@ -49,15 +49,16 @@
     "parameters": {
       "read_from_edge_list": false,
       "read_from_file": false,
+      "temporal": false,
       "graph_file_path": [
-        "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/graph/do_not_nothing.csv"
+        "/ipazianas/pasquini/output_graph_analysis/ten_days/e1ea085a5c0511f091ac08f1eaf4fe18/graph/graph_ten_days.csv"
       ],
-      "pickle_graph_file_path": "/ipazianas/pasquini/twitter_graph_dump/rt_uh_ho"
+      "pickle_graph_file_path": "/ipazianas/pasquini/twitter_graph_dump/retweet_temporal_6"
     },
     "leiden": {
       "to_execute": false,
       "parameters": {
-        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden"
+        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/temporal"
       }
     },
     "combo": {
