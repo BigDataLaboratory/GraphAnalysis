@@ -17,8 +17,18 @@ from Utils.Writer import Writer
 class Leiden:
     logger = logging.getLogger('Leiden')
 
-    def __init__(self):
+    def __init__(self, data_graph):
         self.id = uuid.uuid1().hex
+        self.data_graph = data_graph
+    
+    def get_graph(self):
+        """
+        Returns the graph associated with this Leiden instance.
+        This method is useful for accessing the graph after it has been processed or modified.
+        
+        :return: The igraph.Graph instance associated with this Leiden instance.
+        """
+        return self.data_graph
 
     def compute_pagerank(self, data_graph):
         """
@@ -54,7 +64,7 @@ class Leiden:
         self.logger.info("Elapsed time: " + str(end - start))
 
 
-    def build_daily_slices(self, g):
+    def build_daily_slices(self, g, first_n_days=10):
         """
         Builds daily slices of a temporal graph by grouping edges by their timestamp.
         Each slice is a subgraph representing the edges that occurred on a specific day.
@@ -65,34 +75,95 @@ class Leiden:
         :raises RuntimeError: If the graph is not directed or if the 'time' attribute is not present in the edges.
         :raises Exception: If the graph is not connected or if the partitioning fails.
         """
-        # 1) Raggruppa gli archi per data (UTC)
+        # Group edges by day
         edges_by_day = defaultdict(list)
         for e in g.es:
             day = dt.datetime.utcfromtimestamp(e['time']).date()
             edges_by_day[day].append((e.tuple, e['weight']))
 
-        # 2) Costruisci un grafo per ogni giorno
+        # Create daily slices
+        if first_n_days > 0:
+            sorted_days = sorted(edges_by_day)[:first_n_days] # Get the first 14 days with activity
+            self.logger.info(f"Using the first {first_n_days} days with activity: {[day.isoformat() for day in sorted_days]}")
+        else:
+            sorted_days = sorted(edges_by_day)
+            self.logger.info(f"Using all days with activity")
+
         slices = []
-        for day in sorted(edges_by_day):                # ordine cronologico
+        for day in sorted_days:                # chronological order
             edge_tuples = [tpl for tpl, _ in edges_by_day[day]]
             weights     = [w for _, w in edges_by_day[day]]
 
-            # nuovo grafo “vuoto” con stesso numero di nodi
+            # Create a subgraph for the day
             Gd = ig.Graph(n=g.vcount(), edges=edge_tuples, directed=g.is_directed())
 
-            # copia attributi di vertice
+            # copy attributes of vertex
             Gd.vs['id']    = g.vs['id']
             Gd.vs['name']  = g.vs['name']
             Gd.vs['type']  = g.vs['type']
-            Gd.vs['slice'] = [day.isoformat()] * Gd.vcount()   # etichetta del time‑slice
+            Gd.vs['slice'] = [day.isoformat()] * Gd.vcount()   # add slice date to vertices
 
-            # copia attributi di arco
+            # copy attributes of edge
             Gd.es['weight'] = weights
 
             slices.append((day, Gd))
         return slices
 
-    def compute_leiden_temporal(self, data_graph, resolution_parameter_range=(0.1, 1.0)):
+    def build_weekly_slices(self, g):
+        """
+        Builds weekly slices of a temporal directed graph by grouping edges by ISO calendar week.
+        For each week, edges with the same source and target are aggregated by summing their weights.
+
+        :param g: A directed igraph.Graph with edge attributes 'time' (Unix timestamp) and 'weight'.
+        :return: A list of tuples: ((year, week_number), igraph.Graph for that week).
+        """
+        # Step 1: Aggregate edge weights per week
+        weekly_edge_weights = defaultdict(lambda: defaultdict(int))  # {(year, week): {(src, tgt): total_weight}}
+
+        for e in g.es:
+            ts = dt.datetime.utcfromtimestamp(e['time'])
+            year, week, _ = ts.isocalendar()
+            edge_key = e.tuple  # KEEP ORDER: directed edge (source → target)
+            weekly_edge_weights[(year, week)][edge_key] += e['weight']
+
+        # Step 2: Build graph per week
+        slices = []
+        for (year, week), edge_dict in sorted(weekly_edge_weights.items()):
+            edge_list = list(edge_dict.keys())
+            weight_list = list(edge_dict.values())
+
+            Gw = ig.Graph(n=g.vcount(), edges=edge_list, directed=True)
+
+            # Copy vertex attributes
+            Gw.vs['id']    = g.vs['id']
+            Gw.vs['name']  = g.vs['name']
+            Gw.vs['type']  = g.vs['type']
+            Gw.vs['slice'] = [f"{year}-W{week:02d}"] * Gw.vcount()
+
+            # Copy edge weights
+            Gw.es['weight'] = weight_list
+
+            slices.append(((year, week), Gw))
+
+        return slices
+
+    def collapse_nodes(self, labels, min_size=30, dummy=-1):
+        """
+        Collapses nodes in the graph based on their labels, keeping only those with a size greater than or equal to `min_size`.
+        Nodes that do not meet this criterion are replaced with a dummy value.
+        This method is useful for simplifying the graph by merging less significant nodes into a single dummy community.
+
+        :param labels: A list or array-like structure containing the labels of the nodes.
+        :param min_size: The minimum size for a label to be retained. Nodes with fewer than `min_size` occurrences will be replaced with the dummy value.
+        :param dummy: The value to replace nodes community that do not meet the `min_size` criterion.
+        """
+        self.logger.info("Start collapsing nodes")
+        vc = pd.Series(labels).value_counts()
+        big = vc[vc >= min_size].index
+        self.logger.info("Finished collapsing nodes")
+        return np.where(pd.Series(labels).isin(big), labels, dummy)
+
+    def compute_leiden_temporal(self, resolution_parameter_range=(0.4, 0.5)):
         """
         Computes the Leiden partitioning of a temporal graph using the CPM quality function.
         This method iterates over a range of resolution parameters, applies the Leiden algorithm,
@@ -110,22 +181,42 @@ class Leiden:
         self.logger.info("Start Leiden computation for temporal data")
         all_memberships = defaultdict(list) # dict: res → [ [labels], … ]
 
-        if 'id' not in data_graph.vs.attribute_names():
-            data_graph.vs['id'] = data_graph.vs['name'] 
-        for rp in np.linspace(resolution_parameter_range[0], resolution_parameter_range[1], num=10):
+        if 'id' not in self.data_graph.vs.attribute_names():
+            self.data_graph.vs['id'] = self.data_graph.vs['name']
+        if True:
+            self.logger.info("Start removing edges not equal to 0 or 2")
+            for e in self.data_graph.es:
+                print(f"Edge {e.index} type: {e['type']}, type is {type(e['type'])}")
+            edges_to_keep = [e.index for e in self.data_graph.es if e["type"] == "0" or e["type"] == "2"] 
+            self.logger.info("Number of edges to keep: {}".format(len(edges_to_keep)))
+            self.data_graph = self.data_graph.subgraph_edges(edges_to_keep, delete_vertices=False)
+            self.logger.info("Finished removing edges not equal to 0 or 2, created the subgraph")
+        
+        if True:
+            # Build daily slices of the temporal graph
+            self.logger.info(f"Building daily slices of the temporal graph with {self.data_graph.vcount()} nodes and {self.data_graph.ecount()} edges")
+            daily_slices = self.build_daily_slices(self.data_graph)
+            dates = [d for d, _ in daily_slices]
+            self.logger.info("Number of daily slices: {}".format(len(daily_slices)))
+            graphs = [G for _, G in daily_slices]
+            self.logger.info("Number of graphs in daily slices: {}".format(len(graphs)))
+        if False:
+            self.logger.info(f"Building weekly slices of the temporal graph with {self.data_graph.vcount()} nodes and {self.data_graph.ecount()} edges")
+            weekly_slices = self.build_weekly_slices(self.data_graph)
+            # Extract (year, week) identifiers
+            weeks = [f"{year}-W{week:02d}" for (year, week), _ in weekly_slices]
+            self.logger.info("Number of weekly slices: {}".format(len(weekly_slices)))
+            # Extract igraph.Graph objects only
+            graphs = [G for _, G in weekly_slices]
+            self.logger.info("Number of graphs in weekly slices: {}".format(len(graphs)))
+
+        for rp in np.linspace(resolution_parameter_range[0], resolution_parameter_range[1], num=1):
             start = time.time()
 
             rp_round = round(rp, 1)
             self.logger.info("Starting Leiden with CPM Quality Function and resolution parameter = {}".format(rp_round))
-
-            # Build daily slices of the temporal graph
-            daily_slices = self.build_daily_slices(data_graph)
-            dates = [d for d, _ in daily_slices]
-
             # Apply the Leiden algorithm to each daily slice
             # and collect the memberships for each resolution parameter
-            graphs = [G for _, G in daily_slices]
-
             memberships, dQ = la.find_partition_temporal(graphs, 
                                             la.CPMVertexPartition, 
                                             interslice_weight=0.2,
@@ -133,12 +224,23 @@ class Leiden:
                                             seed=42)
             all_memberships[rp_round] = memberships
             series_per_node = list(zip(*all_memberships[rp_round]))
-            data_graph.vs["{}".format(rp_round)] = [
-                    {date.isoformat(): lbl for date, lbl in zip(dates, labels)}
-                for labels in series_per_node
-            ]
 
-            data_graph[f"cpm_quality_{rp_round}"] = dQ
+            if True:
+                self.data_graph.vs["{}".format(rp_round)] = [
+                        {date.isoformat(): lbl for date, lbl in zip(dates, labels)}
+                    for labels in series_per_node
+                ]
+            if False:
+                # Convert (year, week) → "YYYY-Www" strings
+                week_labels = [f"{year}-W{week:02d}" for (year, week), _ in weekly_slices]
+                print("Week labels: ", week_labels)
+
+                self.data_graph.vs["{}".format(rp_round)] = [
+                    {week: lbl for week, lbl in zip(week_labels, labels)}
+                    for labels in series_per_node
+                ]
+
+            self.data_graph[f"cpm_quality_{rp_round}"] = dQ
             self.logger.info("Leiden CPM quality value is: {}, resolution parameter is {}".format(dQ, rp_round))
 
             end = time.time()
@@ -148,13 +250,12 @@ class Leiden:
             self.logger.info("Elapsed time: " + str(end - start))
             yield rp_round
 
-    def compute_leiden(self, data_graph, resolution_parameter_range=(0.1, 1.0)):
+    def compute_leiden(self, resolution_parameter_range=(0.1, 1.0), number_of_resolutions=10):
         """
         Computes the Leiden partitioning of the graph using the CPM quality function.
         This method iterates over a range of resolution parameters, applies the Leiden algorithm,
         and updates the graph with the partitioning results.
         
-        :param data_graph: The graph to partition, an igraph.Graph instance.
         :param resolution_parameter_range: A tuple specifying the range of resolution parameters to test.
         
         :return: Yields the resolution parameter used for each partitioning.
@@ -163,19 +264,19 @@ class Leiden:
         :raises RuntimeError: If the Leiden algorithm fails to compute a partition. 
         """
         self.logger.info("Start Leiden computation")
-        for rp in np.linspace(resolution_parameter_range[0], resolution_parameter_range[1], num=10):
+        for rp in np.linspace(resolution_parameter_range[0], resolution_parameter_range[1], num=number_of_resolutions):
             start = time.time()
 
             rp_round = round(rp, 1)
             self.logger.info("Starting Leiden with CPM Quality Function and resolution parameter = {}".format(rp_round))
 
-            partition = la.find_partition(data_graph, la.RBConfigurationVertexPartition, resolution_parameter=rp_round,
+            partition = la.find_partition(self.data_graph, la.CPMVertexPartition, resolution_parameter=rp_round,
                                           weights='weight',
                                           seed=0)
             cpm = partition.quality()
 
-            data_graph.vs["{}".format(rp_round)] = partition.membership
-            data_graph["cpm_quality"] = cpm
+            self.data_graph.vs["{}".format(rp_round)] = partition.membership
+            self.data_graph["cpm_quality"] = cpm
             self.logger.info("Leiden CPM quality value is: {}, resolution parameter is {}".format(cpm, rp_round))
 
             end = time.time()

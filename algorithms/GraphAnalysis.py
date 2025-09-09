@@ -1,4 +1,6 @@
 import logging
+import pandas as pd
+import os
 
 from collections import namedtuple
 
@@ -74,9 +76,9 @@ class GraphAnalysis:
             gg.query_data_in_chunks(w, s, method=self.parameters.source_method)
 
         # Community detection
-        community_detection = self.parameters.do_community_detection_combo or self.parameters.do_community_detection_leiden
+        community_detection = self.parameters.do_community_detection_combo or self.parameters.do_community_detection_leiden or self.parameters.do_community_hierarchical
         if community_detection:
-            if self.parameters.do_community_detection_leiden:
+            if self.parameters.do_community_detection_leiden or self.parameters.do_community_hierarchical:
                 w = Writer('igraph', self.parameters.temporal)
             elif self.parameters.do_community_detection_combo:
                 w = Writer('nx')
@@ -96,20 +98,66 @@ class GraphAnalysis:
             combo_instance.export_graph(g, self.parameters.community_combo_prop["community_output_file_path"])
 
         if self.parameters.do_community_detection_leiden:
-            leiden_instance = Leiden()
+            leiden_instance = Leiden(g)
             if not self.parameters.temporal:
-                rps = leiden_instance.compute_leiden(g, (0.1, 1.0))
+                rps = leiden_instance.compute_leiden((0.1, 1.0))
                 for rp in rps:
-                    leiden_instance.export_partition(g, rp,
+                    leiden_instance.export_partition(leiden_instance.get_graph(), rp,
                                                     self.parameters.community_leiden_prop["community_output_file_path"],
                                                     ["name", "type", "{}".format(rp)])
-                leiden_instance.export_graph(g, self.parameters.community_leiden_prop["community_output_file_path"])
+                leiden_instance.export_graph(leiden_instance.get_graph(), self.parameters.community_leiden_prop["community_output_file_path"])
             else:
-                rps = leiden_instance.compute_leiden_temporal(g, (0.1, 1.0))
+                rps = leiden_instance.compute_leiden_temporal((0.4, 0.5))
                 for rp in rps:
-                    leiden_instance.export_partition(g, rp,
+                    leiden_instance.export_partition(leiden_instance.get_graph(), rp,
                                                     self.parameters.community_leiden_prop["community_output_file_path"],
                                                     ["name", "type", "{}".format(rp)])
+        
+        if self.parameters.do_community_hierarchical:
+            collapse_nodes = self.parameters.community_hierarchical_prop["collapse_nodes"]
+            resolution_col = self.parameters.community_hierarchical_prop["community_col_name"]
+            top_k = self.parameters.community_hierarchical_prop["top_k"]
+
+            communities = pd.read_csv(self.parameters.community_hierarchical_prop["first_level_communities_file"], sep=',', header=0, low_memory=False)
+            labels = communities[resolution_col].to_numpy()
+
+            if collapse_nodes:
+                col_to_extract_communities = "collapsed"
+                self.logger.info("Collapsing nodes with min size {}".format(self.parameters.community_hierarchical_prop["min_size"]))
+                self.logger.info("Number of communities before collapsing: {}".format(len(set(labels))))
+                labels_c = w.collapse_nodes(labels, self.parameters.community_hierarchical_prop["min_size"])
+                self.logger.info("Number of communities after collapsing: {}".format(len(set(labels_c))))
+                # Update the communities DataFrame with collapsed labels
+                communities[col_to_extract_communities] = labels_c
+                vc = pd.Series(labels_c)
+            else:
+                col_to_extract_communities = resolution_col
+                vc = pd.Series(labels)
+            
+            vc = vc[vc != -1].value_counts()
+            top_communities = vc.head(top_k).index
+
+            top_node_indices = communities[communities[col_to_extract_communities].isin(top_communities)]["id"].to_numpy()
+
+            # Create a subgraph with only the top communities
+            subgraph = g.subgraph(top_node_indices)
+            self.logger.info("Number of nodes in subgraph: {}".format(len(subgraph.vs)))
+            self.logger.info("Number of edges in subgraph: {}".format(len(subgraph.es)))
+
+            # Export the subgraph
+            filename = "top500_final.pkl"
+            full_path = os.path.join("/ipazianas/pasquini/twitter_graph_dump", filename)
+            with open(full_path, "wb") as f:
+                subgraph.write_pickle(full_path)
+            self.logger.info("Final graph saved.")
+            
+            leiden_instance = Leiden(subgraph)
+            rps = leiden_instance.compute_leiden((0.1, 1.0), number_of_resolutions=10)
+            for rp in rps:
+                leiden_instance.export_partition(leiden_instance.get_graph(), rp,
+                                                    self.parameters.community_hierarchical_prop["community_output_file_path"],
+                                                    ["name", "type", "{}".format(rp)])
+            leiden_instance.export_graph(leiden_instance.get_graph(), self.parameters.community_hierarchical_prop["community_output_file_path"])
 
         # Get text data from raw dataset
         if self.parameters.do_get_text:

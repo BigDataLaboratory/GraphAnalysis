@@ -11,6 +11,8 @@ from datetime import datetime
 
 import networkx as nx
 import igraph as ig
+import pandas as pd
+import numpy as np
 
 from Utils.Const import Const as c
 from itertools import chain
@@ -151,6 +153,10 @@ class Writer:
         # Get all attributes for vertices
         attributes = g.vs.attributes() if not attr_list else attr_list
 
+        for attr in attributes:
+            if attr not in g.vs.attributes():
+                print(f"Missing attribute: {attr}")
+
         # Open the file for writing
         with open(file_path, mode="a", newline="", encoding="utf-8") as file:
             writer = csv.writer(file)
@@ -163,7 +169,22 @@ class Writer:
                 row = [vertex.index] + [vertex[attr] for attr in attributes]
                 writer.writerow(row)
 
+    def collapse_nodes(self, labels, min_size=30, dummy=-1):
+        """
+        Collapses nodes in the graph based on their labels, keeping only those with a size greater than or equal to `min_size`.
+        Nodes that do not meet this criterion are replaced with a dummy value.
+        This method is useful for simplifying the graph by merging less significant nodes into a single dummy community.
 
+        :param labels: A list or array-like structure containing the labels of the nodes.
+        :param min_size: The minimum size for a label to be retained. Nodes with fewer than `min_size` occurrences will be replaced with the dummy value.
+        :param dummy: The value to replace nodes community that do not meet the `min_size` criterion.
+        """
+        self.logger.info("Start collapsing nodes")
+        vc = pd.Series(labels).value_counts()
+        big = vc[vc >= min_size].index
+        self.logger.info("Finished collapsing nodes")
+        return np.where(pd.Series(labels).isin(big), labels, dummy)
+    
     def process_csv_file(self, file_path, chunk_size, header=False):
         """
         Read a single CSV file in chunks and process it.
@@ -301,7 +322,6 @@ class Writer:
 
         return global_graph
 
-
     def read_csv_in_batch(self, path, output_path, batch_size = 300000, header = False):
         """
         Reads a CSV file in batches and processes it to create a graph.
@@ -372,9 +392,11 @@ class Writer:
 
         full_g = ig.Graph(directed=True)
 
-        for fn in files:
+        for i, fn in enumerate(files):
             if self.graph_type == "igraph":
+                self.logger.info(f"Loading subgraph {i} / {len(files)}")
                 sg = ig.Graph.Read_Pickle(fn)
+                self.logger.info(f"Subgraph {i} loaded with {sg.vcount()} vertices and {sg.ecount()} edges")
                 if full_g.vcount() == 0 and full_g.ecount() == 0:
                     full_g = sg
                 else:
@@ -418,6 +440,7 @@ class Writer:
                     if self.temporal_graph:
                         master.es["time"] = times
                     full_g = master
+                self.logger.info(f"Graph {i} loaded with {full_g.vcount()} vertices and {full_g.ecount()} edges")
             elif self.graph_type == "nx":
                 with open(fn, "rb") as f:
                     sg = pickle.load(f)

@@ -1,6 +1,6 @@
 {
   "log": {
-    "filepath": "/ipazianas/pasquini/logs/leiden-daily_logs.log",
+    "filepath": "/ipazianas/pasquini/logs/check_reply_ht_leiden.log",
     "level": "INFO"
   },
   "graph_generation": {
@@ -17,8 +17,8 @@
           "db_name": "twitter",
           "collection": "QCPS_2",
           "chunk_start_date": "22/02/2022",
-          "chunk_end_date": "30/04/2022",
-          "method": "day"
+          "chunk_end_date": "31/08/2022",
+          "method": "full"
         }
     },
       "graph_type": {
@@ -49,22 +49,33 @@
     "parameters": {
       "read_from_edge_list": true,
       "read_from_file": true,
-      "temporal": true,
+      "temporal": false,
       "graph_file_path": [
-        "/ipazianas/pasquini/output_graph_analysis/feb-may_day_2022/913418945e5b11f0bc1108f1eaf4fe18/graph/temporal_graph.csv"
+        "/ipazianas/pasquini/output_graph_analysis/feb-aug_2022/2f019fee5d7411f0be9308f1eaf4fe18/graph/reply_hashtags.csv"
       ],
-      "pickle_graph_file_path": "/ipazianas/pasquini/twitter_graph_dump/feb-may-day-2022"
+      "pickle_graph_file_path": "/ipazianas/pasquini/twitter_graph_dump/reply_hashtags_feb-aug_2022"
     },
     "leiden": {
       "to_execute": true,
       "parameters": {
-        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/temporal/feb-may-day-2022"
+        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/reply_hashtags"
       }
     },
     "combo": {
       "to_execute": false,
       "parameters": {
         "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_combo"
+      }
+    },
+    "hierarchical": {
+      "to_execute": false,
+      "parameters": {
+        "first_level_communities_file": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/6273205e640511f08e0b08f1eaf4fe18/nodes_with_communities.csv",
+        "community_col_name": "0.6",
+        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/6273205e640511f08e0b08f1eaf4fe18/hierarchical",
+        "top_k": 500,
+        "collapse_nodes": true,
+        "min_size": 30
       }
     }
   },
