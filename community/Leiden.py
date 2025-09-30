@@ -594,10 +594,9 @@ class Leiden:
             all_memberships[rp_round] = memberships
             series_per_node = list(zip(*all_memberships[rp_round]))
             self.data_graph.vs["{}".format(rp_round)] = [
-                        {date.isoformat(): lbl for date, lbl in zip(dates, labels)}
-                    for labels in series_per_node
-                ]
-
+                {date: lbl for date, lbl in zip(dates, labels)}
+                for labels in series_per_node
+            ]
             end = time.time()
 
             self.logger.info(
