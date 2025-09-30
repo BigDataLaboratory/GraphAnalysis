@@ -1,6 +1,6 @@
 {
   "log": {
-    "filepath": "/ipazianas/pasquini/logs/check_reply_ht_leiden.log",
+    "filepath": "/ipazianas/pasquini/logs/leiden_weekly_temporal.log",
     "level": "INFO"
   },
   "graph_generation": {
@@ -9,7 +9,7 @@
       "input": {
         "type": "mongo",
         "conf": {
-          "uri": "mongodb://127.0.0.1:27021/",
+          "uri": "mongodb://127.0.0.1:27020/",
           "username": "twitter",
           "password": "twitter",
           "authName": "twitter",
@@ -17,8 +17,8 @@
           "db_name": "twitter",
           "collection": "QCPS_2",
           "chunk_start_date": "22/02/2022",
-          "chunk_end_date": "31/08/2022",
-          "method": "full"
+          "chunk_end_date": "31/10/2022",
+          "method": "week"
         }
     },
       "graph_type": {
@@ -30,7 +30,7 @@
         "hashtag_cooccurrences": true
       },
       "output": {
-        "path": "/ipazianas/pasquini/output_graph_analysis/feb-may_day_2022",
+        "path": "/ipazianas/pasquini/output_graph_analysis/feb-oct_week_2022",
         "graph_file_name": {
           "retweet": "retweet",
           "mention": "mention",
@@ -47,18 +47,18 @@
   },
   "community_detection": {
     "parameters": {
-      "read_from_edge_list": true,
+      "read_from_edge_list": false,
       "read_from_file": true,
-      "temporal": false,
+      "temporal": true,
       "graph_file_path": [
-        "/ipazianas/pasquini/output_graph_analysis/feb-aug_2022/2f019fee5d7411f0be9308f1eaf4fe18/graph/reply_hashtags.csv"
+        "/ipazianas/pasquini/output_graph_analysis/feb-oct_week_2022/6500962c9d1611f0948408f1eaf4fe18/retweet"
       ],
-      "pickle_graph_file_path": "/ipazianas/pasquini/twitter_graph_dump/reply_hashtags_feb-aug_2022"
+      "pickle_graph_file_path": "/ipazianas/pasquini/twitter_graph_dump/feb_oct_2022"
     },
     "leiden": {
       "to_execute": true,
       "parameters": {
-        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/reply_hashtags"
+        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/temporal/feb_oct_weekly_2022/retweet"
       }
     },
     "combo": {

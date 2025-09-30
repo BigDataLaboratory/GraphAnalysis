@@ -107,7 +107,13 @@ class GraphAnalysis:
                                                     ["name", "type", "{}".format(rp)])
                 leiden_instance.export_graph(leiden_instance.get_graph(), self.parameters.community_leiden_prop["community_output_file_path"])
             else:
-                rps = leiden_instance.compute_leiden_temporal((0.4, 0.5))
+                rps = leiden_instance.compute_leiden_temporal_incremental(
+                    method="CPM",
+                    resolution_parameter_range=(0.4, 0.5),
+                    lambda_temporal=0.1,
+                    cap_bonus=1,
+                    n_iterations=10,
+                )   
                 for rp in rps:
                     leiden_instance.export_partition(leiden_instance.get_graph(), rp,
                                                     self.parameters.community_leiden_prop["community_output_file_path"],

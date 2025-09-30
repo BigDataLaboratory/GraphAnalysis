@@ -415,57 +415,75 @@ class GraphGeneration(MongoConnection):
 
         if method != "full":
             cursor = c.find(where_f, project).sort('created_at', ASCENDING).batch_size(batch_size)
-            current_day = None
+            
+            # Use more generic variable names
+            current_bucket_id = None
             bucket_docs = []
             intermediate_map = set()
             intermediate_result = {}
             tz_rome = ZoneInfo("Europe/Rome")
             for i, document in enumerate(cursor, 1):
+                created_at_rome = document["created_at"].astimezone(tz_rome)
+                
+                if method == "day":
+                    # Truncate to the beginning of the day
+                    bucket_start_dt = created_at_rome.replace(hour=0, minute=0, second=0, microsecond=0)
+                elif method == "week":
+                    # Calculate the start of the week (Monday)
+                    start_of_week_offset = created_at_rome.weekday()  # Monday is 0, Sunday is 6
+                    bucket_start_dt = (created_at_rome - timedelta(days=start_of_week_offset)).replace(hour=0, minute=0, second=0, microsecond=0)
+                else:
+                    # Handle unsupported methods
+                    raise ValueError(f"Unsupported aggregation method: '{method}'. Choose 'day' or 'week'.")
+                
+                bucket_id = bucket_start_dt.timestamp()
 
-                # Convert created_at to Rome timezone and get the day timestamp
-                day = document["created_at"].astimezone(tz_rome).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-                if current_day is None:
-                    current_day = day
-                if day != current_day:
-                    day_bucket = {"_id": current_day, "docs": bucket_docs}
-                    # flush yesterday
-                    edges, maps = self.process_bucket_document(day_bucket)
+                if current_bucket_id is None:
+                    current_bucket_id = bucket_id
+
+                if bucket_id != current_bucket_id:
+                    # Create and process the bucket for the previous period (day or week)
+                    bucket = {"_id": current_bucket_id, "docs": bucket_docs}
+                    edges, maps = self.process_bucket_document(bucket)
 
                     for item in edges:
                         key = (item[0], item[1], item[2], item[-1])
                         if item[-1] != 1:
                             if key not in intermediate_result:
                                 intermediate_result[key] = 0
-                            intermediate_result[key] += item[3]  # Sum the third element
+                            intermediate_result[key] += item[3]
                         else:
                             intermediate_result[key] = item[3:-1]
                     intermediate_map.update(maps)
 
-                    # Save checkpoint after every `checkpoint_interval` documents
+                    # Save checkpoint
                     if i % checkpoint_interval == 0:
                         self.save_bucket_checkpoint(intermediate_result, intermediate_map, process_id)
                         intermediate_result = {}
                         intermediate_map = set()
-                    bucket_docs = []  # start new bucket
-                    current_day = day
+                    
+                    # Start a new bucket
+                    bucket_docs = []
+                    current_bucket_id = bucket_id
 
                 bucket_docs.append(document)
 
-            # flush the last day
+            # Flush the final bucket after the loop
             if bucket_docs:
-                day_bucket = {"_id": current_day, "docs": bucket_docs}
-                edges, maps = self.process_bucket_document(day_bucket)
+                bucket = {"_id": current_bucket_id, "docs": bucket_docs}
+                edges, maps = self.process_bucket_document(bucket)
 
                 for item in edges:
                     key = (item[0], item[1], item[2], item[-1])
                     if item[-1] != 1:
                         if key not in intermediate_result:
                             intermediate_result[key] = 0
-                        intermediate_result[key] += item[3]  # Sum the third element
+                        intermediate_result[key] += item[3]
                     else:
                         intermediate_result[key] = item[2:-1]
                 
                 intermediate_map.update(maps)
+            
             if intermediate_result:
                 self.save_bucket_checkpoint(intermediate_result, intermediate_map, process_id)
 
@@ -519,12 +537,12 @@ class GraphGeneration(MongoConnection):
         """
         # Generate chunks based on the collection's create_at field
         # Ensure start_date and end_date are timezone-aware
-        delta = timedelta(weeks=1)
+        delta = timedelta(days=2)
         chunks = list(self.generate_date_chunks(self.start_date, self.end_date, delta))
 
         Writer.create_dirs(self.output_file_path, self.id)
 
-        max_workers = min(30, len(chunks)) # Limit the number of workers to 30 or the number of chunks, whichever is smaller
+        max_workers = min(4, len(chunks)) # Limit the number of workers to 30 or the number of chunks, whichever is smaller
         futures = []
 
         self.logger.info(f"Processing {len(chunks)} chunks with {max_workers} workers.")
