@@ -156,45 +156,23 @@ class Leiden:
             yield week_str, Gw
 
     def build_weekly_slices(self, g):
-        """
-        Builds weekly slices of a temporal directed graph by grouping edges by ISO calendar week.
-        For each week, edges with the same source and target are aggregated by summing their weights.
-
-        :param g: A directed igraph.Graph with edge attributes 'time' (Unix timestamp) and 'weight'.
-        :return: A list of tuples: ((year, week_number), igraph.Graph for that week).
-        """
-        # Aggregate edge weights per week
-        weekly_edge_weights = defaultdict(lambda: defaultdict(int))  # {(year, week): {(src, tgt): total_weight}}
-
+        weekly_edge_weights = defaultdict(lambda: defaultdict(int))
         for e in g.es:
-            ts = dt.datetime.fromtimestamp(e["time"], tz=dt.timezone.utc)
+            ts = dt.datetime.utcfromtimestamp(e['time'])
             year, week, _ = ts.isocalendar()
-            week_str = f"{year}-W{week:02d}"
-            edge_key = e.tuple  # directed edge (src, tgt)
+            weekly_edge_weights[(year, week)][e.tuple] += e.get('weight', 1)
 
-            # Use weight if present, otherwise default to 1.0
-            weight = e["weight"] if "weight" in e.attributes() and e["weight"] is not None else 1.0
-            weekly_edge_weights[week_str][edge_key] += float(weight)
-
-        # Build graph per week
         slices = []
-        for week_str, edge_dict in sorted(weekly_edge_weights.items()):
+        for (year, week), edge_dict in sorted(weekly_edge_weights.items()):
             edge_list = list(edge_dict.keys())
             weight_list = list(edge_dict.values())
-
             Gw = ig.Graph(n=g.vcount(), edges=edge_list, directed=True)
-
-            # Copy vertex attributes
-            for attr in g.vs.attributes():
-                Gw.vs[attr] = g.vs[attr]
-            
-            Gw.vs["slice"] = [week_str] * Gw.vcount()
-
-            # Copy edge weights
+            for attr in ("id", "name", "type"):
+                if attr in g.vs.attribute_names():
+                    Gw.vs[attr] = list(g.vs[attr])
+            Gw.vs['slice'] = [f"{year}-W{week:02d}"] * Gw.vcount()
             Gw.es['weight'] = weight_list
-
-            slices.append((week_str, Gw))
-
+            slices.append(((year, week), Gw))
         return slices
 
     def collapse_nodes(self, labels, min_size=30, dummy=-1):
@@ -513,7 +491,7 @@ class Leiden:
             if prev_comm_by_name:
                 curr_labels = self._relabel_with_overlap(prev_comm_by_name, names, curr_labels)
 
-            memberships.append((list(names), list(curr_labels)))
+            memberships.append(list(curr_labels))
 
             # aggiorna tenure e label precedenti
 
@@ -594,9 +572,13 @@ class Leiden:
             all_memberships[rp_round] = memberships
             series_per_node = list(zip(*all_memberships[rp_round]))
             self.data_graph.vs["{}".format(rp_round)] = [
-                {date: lbl for date, lbl in zip(dates, labels)}
-                for labels in series_per_node
+                        {date: lbl for date, lbl in zip(dates, labels)}
+                    for labels in series_per_node
             ]
+            
+
+
+
             end = time.time()
 
             self.logger.info(
