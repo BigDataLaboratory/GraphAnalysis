@@ -423,6 +423,7 @@ class Leiden:
                 tau = np.minimum(ten[sources], ten[targets])
 
                 mask = (cu == cv) & (cu >= 0)
+                
 
                 '''
                     conta e logga quanti archi hanno ricevuto il bonus e la somma dei bonus applicati (fino a if boosted: self llogger.info(...)).
