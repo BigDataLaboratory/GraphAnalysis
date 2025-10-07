@@ -8,7 +8,7 @@ import time
 import uuid
 from concurrent.futures.thread import ThreadPoolExecutor
 
-import graphscope.nx as nx
+#import graphscope.nx as nx
 import numpy as np
 import pycombo as pycombo
 

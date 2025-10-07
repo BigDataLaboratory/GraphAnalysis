@@ -4,6 +4,10 @@ import logging
 import os
 import time
 import uuid
+import pandas as pd
+import ast
+
+import csv
 
 import igraph as ig
 import leidenalg as la
@@ -160,7 +164,7 @@ class Leiden:
         for e in g.es:
             ts = dt.datetime.utcfromtimestamp(e['time'])
             year, week, _ = ts.isocalendar()
-            weekly_edge_weights[(year, week)][e.tuple] += e.get('weight', 1)
+            weekly_edge_weights[(year, week)][e.tuple] += e["weight"] if "weight" in e.attributes() else 1
 
         slices = []
         for (year, week), edge_dict in sorted(weekly_edge_weights.items()):
@@ -301,6 +305,10 @@ class Leiden:
         processed = 0
 
         slices_iter = self.iter_weekly_slices(self.data_graph)
+        output_dir = f"leiden_results_{self.id}"
+        resolution_key = str(resolution_parameter)
+        os.makedirs(output_dir, exist_ok=True)
+        master_file = os.path.join(output_dir, f"communities_{resolution_key}.csv")
 
         for date_val, G in slices_iter: # Loop sulle slice (una per volta)
             if max_slices is not None and processed >= max_slices:  # interrompe se supera max_slices (parametro)
@@ -423,7 +431,6 @@ class Leiden:
                 tau = np.minimum(ten[sources], ten[targets])
 
                 mask = (cu == cv) & (cu >= 0)
-                
 
                 '''
                     conta e logga quanti archi hanno ricevuto il bonus e la somma dei bonus applicati (fino a if boosted: self llogger.info(...)).
@@ -481,6 +488,9 @@ class Leiden:
 
             curr_labels = part.membership
 
+            self.logger.info("Leiden CPM quality value is: {}".format(part.quality()))
+
+
             # relabel con overlap alle label precedenti
 
             '''
@@ -494,6 +504,7 @@ class Leiden:
 
             memberships.append(list(curr_labels))
 
+
             # aggiorna tenure e label precedenti
 
             '''
@@ -502,6 +513,48 @@ class Leiden:
             Aggiorna la mappa prev_comm_by_name con le label riallineate 
             (importante: il bonus del prossimo giorno userà queste).
             '''
+
+
+            resolution_key = str(resolution_parameter)
+            output_dir = "leiden_slices_csv"
+            os.makedirs(output_dir, exist_ok=True)
+            master_file = os.path.join(output_dir, f"leiden_progressive_{resolution_key}.csv")
+
+            # Se non esiste, crea il CSV iniziale
+            if not os.path.exists(master_file):
+                df_master = pd.DataFrame({
+                    "id": range(len(names)),
+                    "name": names,
+                    "type": G.vs["type"],
+                    resolution_key: [{str(date_val): int(comm)} for comm in curr_labels]
+                })
+                df_master.to_csv(master_file, index=False)
+            else:
+                # Carica solo le colonne necessarie
+                df_master = pd.read_csv(master_file, dtype=str)
+                name_to_index = {n: i for i, n in enumerate(df_master["name"])}
+
+                # Aggiorna solo i nodi presenti in questa slice
+                for name, comm in zip(names, curr_labels):
+                    new_entry = {str(date_val): int(comm)}
+                    if name in name_to_index:
+                        idx = name_to_index[name]
+                        old_str = df_master.at[idx, resolution_key]
+                        try:
+                            old_dict = ast.literal_eval(old_str) if old_str and old_str.strip().startswith("{") else {}
+                        except Exception:
+                            old_dict = {}
+                        old_dict.update(new_entry)
+                        df_master.at[idx, resolution_key] = str(old_dict)
+                    else:
+                        # nuovo nodo mai visto prima
+                        df_master.loc[len(df_master)] = [len(df_master), name, "u", str(new_entry)]
+
+                # Riscrivi tutto, ma senza riconvertire ogni riga a dict
+                tmp_path = master_file + ".tmp"
+                df_master.to_csv(tmp_path, index=False, quoting=csv.QUOTE_NONNUMERIC)
+                os.replace(tmp_path, master_file)
+
 
             new_prev_comm_by_name = {}
             new_tenure_by_name = {}
@@ -608,8 +661,8 @@ class Leiden:
             self.data_graph.vs['id'] = self.data_graph.vs['name']
         if True:
             self.logger.info("Start removing edges not equal to 0 or 2")
-            for e in self.data_graph.es:
-                print(f"Edge {e.index} type: {e['type']}, type is {type(e['type'])}")
+            #for e in self.data_graph.es:
+                #print(f"Edge {e.index} type: {e['type']}, type is {type(e['type'])}")
             edges_to_keep = [e.index for e in self.data_graph.es if e["type"] == "0" or e["type"] == "2"] 
             self.logger.info("Number of edges to keep: {}".format(len(edges_to_keep)))
             self.data_graph = self.data_graph.subgraph_edges(edges_to_keep, delete_vertices=False)
@@ -618,7 +671,7 @@ class Leiden:
         if True:
             # Build daily slices of the temporal graph
             self.logger.info(f"Building daily slices of the temporal graph with {self.data_graph.vcount()} nodes and {self.data_graph.ecount()} edges")
-            daily_slices = self.build_daily_slices(self.data_graph)
+            daily_slices = self.build_weekly_slices(self.data_graph)
             dates = [d for d, _ in daily_slices]
             self.logger.info("Number of daily slices: {}".format(len(daily_slices)))
             graphs = [G for _, G in daily_slices]
@@ -633,7 +686,7 @@ class Leiden:
             graphs = [G for _, G in weekly_slices]
             self.logger.info("Number of graphs in weekly slices: {}".format(len(graphs)))
 
-        for rp in np.linspace(resolution_parameter_range[0], resolution_parameter_range[1], num=1):
+        for rp in np.linspace(resolution_parameter_range[0], resolution_parameter_range[1], num=10):
             start = time.time()
 
             rp_round = round(rp, 1)
@@ -642,7 +695,7 @@ class Leiden:
             # and collect the memberships for each resolution parameter
             memberships, dQ = la.find_partition_temporal(graphs, 
                                             la.CPMVertexPartition, 
-                                            interslice_weight=0.2,
+                                            interslice_weight=0.1,
                                             resolution_parameter=rp_round,
                                             seed=42)
             all_memberships[rp_round] = memberships
@@ -650,7 +703,7 @@ class Leiden:
 
             if True:
                 self.data_graph.vs["{}".format(rp_round)] = [
-                        {date.isoformat(): lbl for date, lbl in zip(dates, labels)}
+                        {date: lbl for date, lbl in zip(dates, labels)}
                     for labels in series_per_node
                 ]
             if False:
@@ -695,7 +748,7 @@ class Leiden:
 
             partition = la.find_partition(self.data_graph, la.CPMVertexPartition, resolution_parameter=rp_round,
                                           weights='weight',
-                                          seed=0)
+                                          seed=42)
             cpm = partition.quality()
 
             self.data_graph.vs["{}".format(rp_round)] = partition.membership

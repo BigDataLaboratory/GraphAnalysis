@@ -12,7 +12,7 @@ from Utils.memory_monitor import setup_memory_logging
 
 os.chdir(Path(__file__).parent)
 
-def get_properties(file_path="properties/prop.json"):
+def get_properties(file_path="properties/prop.ipazia.json"):
     """
     Reads properties from a JSON file.
     The properties file should contain configuration settings for the application.
