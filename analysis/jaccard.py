@@ -9,10 +9,10 @@ import seaborn as sns
 # CONFIG
 # -------------------------
 FILES = {
-    "R": "/home/pasquini/My_nas/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/only_retweet/e70d30d47de611f0845408f1eaf4fe18/nodes_with_communities.csv",
-    "R+H": "/home/pasquini/My_nas/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/retweet_hashtags/0af23d747eae11f0b7b308f1eaf4fe18/nodes_with_communities.csv",
-    "P": "/home/pasquini/My_nas/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/only_response/21271f7c7e7411f09d5308f1eaf4fe18/nodes_with_communities.csv",
-    "P+H": "/home/pasquini/My_nas/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/reply_hashtags/54121e227ef711f0b05c08f1eaf4fe18/nodes_with_communities.csv"
+    "R": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/only_retweet/e70d30d47de611f0845408f1eaf4fe18/nodes_with_communities.csv",
+    "R+H": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/retweet_hashtags/0af23d747eae11f0b7b308f1eaf4fe18/nodes_with_communities.csv",
+    "P": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/only_response/21271f7c7e7411f09d5308f1eaf4fe18/nodes_with_communities.csv",
+    "P+H": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/reply_hashtags/54121e227ef711f0b05c08f1eaf4fe18/nodes_with_communities.csv"
 }
 
 PAIRS = [
@@ -81,7 +81,7 @@ for g1, g2 in PAIRS:
         })
 
 # salva tutto
-output = f"/home/pasquini/My_nas/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/result/jaccard_top{TOP_K}_all_pairs.csv"
+output = f"/scratch/pasquini/result_wc/jaccard_top{TOP_K}_all_pairs.csv"
 dfres = pd.DataFrame(all_results)
 dfres.to_csv(output, index=False)
 print(f"\n✅ Saved results to {output}")
@@ -100,7 +100,7 @@ plt.title("Jaccard overlap vs resolution")
 plt.legend()
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
-plt.savefig("/home/pasquini/My_nas/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/result/jaccard_lineplots.png", dpi=200)
+plt.savefig("/scratch/pasquini/result_wc/jaccard_lineplots.png", dpi=200)
 plt.close()
 
 # -------------------------
@@ -113,7 +113,7 @@ plt.title("Mean Jaccard (1→2) for each pair and resolution")
 plt.xlabel("Resolution")
 plt.ylabel("Pair")
 plt.tight_layout()
-plt.savefig("/home/pasquini/My_nas/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/result/jaccard_heatmap.png", dpi=200)
+plt.savefig("/scratch/pasquini/result_wc/jaccard_heatmap.png", dpi=200)
 plt.close()
 print("✅ Plots saved: jaccard_lineplots.png, jaccard_heatmap.png")
 
@@ -130,7 +130,7 @@ plt.title("Symmetric Mean Jaccard (1↔2) for each pair and resolution")
 plt.xlabel("Resolution")
 plt.ylabel("Pair")
 plt.tight_layout()
-plt.savefig("/home/pasquini/My_nas/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/result/jaccard_heatmap_symmetric.png", dpi=200)
+plt.savefig("/scratch/pasquini/result_wc/jaccard_heatmap_symmetric.png", dpi=200)
 plt.close()
 
 print("✅ Heatmap saved: jaccard_heatmap_symmetric.png")

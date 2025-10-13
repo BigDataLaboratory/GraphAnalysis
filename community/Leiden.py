@@ -560,7 +560,7 @@ class Leiden:
         """
         all_memberships = defaultdict(list)
 
-        for rp in np.linspace(resolution_parameter_range[0], resolution_parameter_range[1], num=1):
+        for rp in np.linspace(resolution_parameter_range[0], resolution_parameter_range[1], num=10):
             start = time.time()
             rp_round = round(rp, 1)
 
@@ -577,8 +577,6 @@ class Leiden:
                     for labels in series_per_node
             ]
             
-
-
 
             end = time.time()
 

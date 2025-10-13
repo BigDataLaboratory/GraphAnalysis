@@ -1,3 +1,17 @@
+#!/usr/bin/env python3
+"""
+analyze_entropy_filtered.py
+
+Computes hashtag entropy for communities, but only for those meeting a minimum
+size threshold to focus the analysis on substantive social groups.
+
+Usage:
+    python analyze_entropy_filtered.py \\
+        --leiden_csv /path/to/nodes_with_communities.csv \\
+        --edge_file /path/to/user_hashtag_edges.csv \\
+        --outdir /path/to/output_directory \\
+        --min_comm_size 11
+"""
 import os
 import math
 import time
@@ -5,6 +19,7 @@ import pandas as pd
 import sys
 from collections import Counter, defaultdict
 from multiprocessing import Pool, cpu_count
+import argparse
 
 
 def shannon_entropy(counts, normalize=True, base=2):
@@ -21,12 +36,13 @@ def shannon_entropy(counts, normalize=True, base=2):
         if unique > 1:
             entropy /= math.log(unique, base)
         else:
+            # A community with only one unique hashtag has zero entropy (no uncertainty).
             entropy = 0.0
     return entropy
 
 
-def process_chunk(lines, name_to_type, user_to_comm, sep="\t"):
-    """Process one chunk of edges → partial counters."""
+def process_chunk(lines, name_to_type, user_to_comm, sep=","):
+    """Process one chunk of edges -> partial counters."""
     comm_to_counts = defaultdict(Counter)
     comm_to_users = defaultdict(set)
 
@@ -41,11 +57,12 @@ def process_chunk(lines, name_to_type, user_to_comm, sep="\t"):
         if etype != 2:
             continue
 
-        if name_to_type.get(src) == 'u' and name_to_type.get(dst) == 'h':
+        if name_to_type.get(src) == 'u':
             user, hashtag = src, dst
-        elif name_to_type.get(dst) == 'u' and name_to_type.get(src) == 'h':
+        elif name_to_type.get(dst) == 'u':
             user, hashtag = dst, src
         else:
+            # This edge does not involve a user from our Leiden file.
             continue
 
         comm = user_to_comm.get(user)
@@ -77,7 +94,6 @@ def compute_comm_stats(args):
     total_usages = sum(counts.values())
     n_unique_hashtags = len(counts)
     entropy = shannon_entropy(counts, normalize=normalize)
-
     dominant_share = max(counts.values()) / total_usages if total_usages > 0 else 0.0
 
     return {
@@ -92,7 +108,7 @@ def compute_comm_stats(args):
 
 
 def analyze_entropy_sparse(leiden_csv, edge_file, outdir,
-                           resolutions=None, normalize=True,
+                           min_comm_size=11, resolutions=None, normalize=True,
                            name_col='name', type_col='type',
                            sep=",", chunk_size=1_000_000, n_jobs=None):
     os.makedirs(outdir, exist_ok=True)
@@ -115,8 +131,8 @@ def analyze_entropy_sparse(leiden_csv, edge_file, outdir,
 
     for res in resolutions:
         print(f"\n--- Processing resolution {res} ---")
-        users = df[df[type_col].str.lower() == 'u'][[name_col, res]].dropna()
-        user_to_comm = dict(zip(users[name_col].astype(str), users[res].astype(str)))
+        users_df = df[df[type_col].str.lower() == 'u'][[name_col, res]].dropna()
+        user_to_comm = dict(zip(users_df[name_col].astype(str), users_df[res].astype(str)))
         print(f" Users at this resolution: {len(user_to_comm):,}")
 
         # === PARSE EDGES IN PARALLEL ===
@@ -134,18 +150,36 @@ def analyze_entropy_sparse(leiden_csv, edge_file, outdir,
                 tasks.append(pool.apply_async(process_chunk, (chunk, name_to_type, user_to_comm, sep)))
                 print(f"  Dispatched final chunk {len(tasks)}")
         pool.close()
-
+        
         partials = [task.get() for task in tasks]
         pool.join()
-
+        
         comm_to_counts, comm_to_users = merge_results(partials)
         print(f"  ✔ Merged results from {len(tasks)} chunks into {len(comm_to_counts):,} communities")
 
-        # === PREPARE ARGS FOR COMMUNITY-LEVEL PARALLEL ===
+        # ======================================================================
+        # --- START: NEW FILTERING STEP ---
+        # ======================================================================
+        print(f"  Applying filter: keeping communities with >= {min_comm_size} users...")
+        
+        # Identify communities that meet the size threshold
+        large_enough_comms = {
+            comm for comm, users in comm_to_users.items() 
+            if len(users) >= min_comm_size
+        }
+        
+        n_before = len(comm_to_counts)
+        print(f"  Found {len(large_enough_comms):,} communities meeting the threshold out of {n_before:,}.")
+        
+        # ======================================================================
+        # --- END: NEW FILTERING STEP ---
+        # ======================================================================
+
+        # === PREPARE ARGS FOR COMMUNITY-LEVEL PARALLEL (NOW FILTERED) ===
         mask = df[type_col].str.lower() != 'u'
         comm_to_hashtag_nodes = df.loc[mask, res].astype(str).value_counts().to_dict()
 
-        pool = Pool(processes=n_jobs)
+        # Build the argument list, but only for communities that passed the filter
         comm_args = [
             (comm,
              counts,
@@ -153,17 +187,21 @@ def analyze_entropy_sparse(leiden_csv, edge_file, outdir,
              comm_to_hashtag_nodes.get(comm, 0),
              normalize)
             for comm, counts in comm_to_counts.items()
+            if comm in large_enough_comms  # The filtering condition
         ]
 
         n_comms = len(comm_args)
-        print(f"  Starting entropy stats for {n_comms:,} communities "
-              f"using {n_jobs} workers...")
+        if n_comms == 0:
+            print("  No communities met the size threshold. Skipping to next resolution.")
+            continue
+            
+        print(f"  Starting entropy stats for {n_comms:,} filtered communities using {n_jobs} workers...")
 
         pool = Pool(processes=n_jobs)
         results = []
         for i, result in enumerate(pool.imap_unordered(compute_comm_stats, comm_args, chunksize=500), 1):
             results.append(result)
-            if i % 10000 == 0 or i == n_comms:
+            if i % 1000 == 0 or i == n_comms:
                 print(f"    Progress: {i:,}/{n_comms:,} communities ({100*i/n_comms:.1f}%)")
                 sys.stdout.flush()
         pool.close()
@@ -180,16 +218,33 @@ def analyze_entropy_sparse(leiden_csv, edge_file, outdir,
         return None, None
 
     out_df = pd.concat(results_dfs, ignore_index=True)
-    out_csv = os.path.join(outdir, 'reply_entropy_per_community_per_resolution_sparse.csv')
+    
+    # Update output filename to reflect filtering
+    base_filename = os.path.basename(leiden_csv).replace('.csv', '')
+    out_csv = os.path.join(outdir, f'entropy_reply_{base_filename}_filtered_gt{min_comm_size-1}.csv')
     out_df.to_csv(out_csv, index=False)
-    print("\nWrote", out_csv)
+    print("\nWrote filtered results to:", out_csv)
 
     return out_df
 
 
 if __name__ == "__main__":
-    leiden_csv = "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/reply_hashtags/54121e227ef711f0b05c08f1eaf4fe18/nodes_with_communities.csv"
-    edge_file = "/ipazianas/pasquini/output_graph_analysis/feb-aug_2022/2f019fee5d7411f0be9308f1eaf4fe18/graph/user_hashtag"
-    outdir = "/home/pasquini/My_nas/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/entropy_retweet"
-    analyze_entropy_sparse(leiden_csv, edge_file, outdir,
-                             sep=",", chunk_size=1_000_000, n_jobs=25)
+    parser = argparse.ArgumentParser(description="Analyze hashtag entropy for Leiden communities, filtering by size.")
+    parser.add_argument('--leiden_csv', required=True, help='Path to the nodes_with_communities.csv file from Leiden.')
+    parser.add_argument('--edge_file', required=True, help='Path to the user-hashtag edge list file.')
+    parser.add_argument('--outdir', required=True, help='Output directory for the resulting CSV file.')
+    parser.add_argument('--min_comm_size', type=int, default=11, help='Minimum number of users for a community to be included (default: 11 for >10 users).')
+    parser.add_argument('--sep', default=',', help='Separator for the edge file (default: ",").')
+    parser.add_argument('--chunk_size', type=int, default=1_000_000, help='Number of lines to process per chunk.')
+    parser.add_argument('--n_jobs', type=int, default=30, help='Number of parallel processes to use.')
+    args = parser.parse_args()
+
+    analyze_entropy_sparse(
+        leiden_csv=args.leiden_csv,
+        edge_file=args.edge_file,
+        outdir=args.outdir,
+        min_comm_size=args.min_comm_size,
+        sep=args.sep,
+        chunk_size=args.chunk_size,
+        n_jobs=args.n_jobs
+    )

@@ -1,6 +1,6 @@
 {
   "log": {
-    "filepath": "/ipazianas/pasquini/logs/leiden_weekly_temporal.log",
+    "filepath": "/ipazianas/pasquini/logs/leiden_weekly_temporal_2.log",
     "level": "INFO"
   },
   "graph_generation": {
