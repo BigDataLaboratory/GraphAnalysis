@@ -13,11 +13,13 @@ import networkx as nx
 import igraph as ig
 import pandas as pd
 import numpy as np
+import math
 
 from Utils.Const import Const as c
 from itertools import chain
 from collections import defaultdict
 from multiprocessing import cpu_count
+from concurrent.futures import ProcessPoolExecutor
 
 from algorithms.EdgeToGraph import EdgeToGraph
 
@@ -447,6 +449,131 @@ class Writer:
                 full_g = full_g.union(sg)
         self.logger.info("Full graph loaded with {} vertices and {} edges".format(full_g.vcount(), full_g.ecount()))
         return full_g
+
+    @staticmethod
+    def _read_single_graph(path):
+        # Worker: read and return igraph.Graph (uses igraph's own unpickle)
+        return ig.Graph.Read_Pickle(path)
+
+    def read_pickle_parallel_preserve_time(self, snapshot_dir, max_workers=None):
+        """
+        Read pickled subgraphs in parallel and merge them, preserving edge attributes
+        including 'time' if self.temporal_graph is True.
+
+        Strategy:
+        1. Parallel load all pickles into igraph.Graph objects.
+        2. Sequentially merge them (consistent name -> index mapping).
+        """
+        self.logger.info(f"Reading snapshot at {snapshot_dir}")
+        files = sorted(glob.glob(os.path.join(snapshot_dir, "*.pkl")))
+        if not files:
+            self.logger.info("No pickle files found.")
+            return ig.Graph(directed=True)
+
+        # 1) Parallel load
+        n_workers = max_workers or min(12, os.cpu_count() or 1)
+        self.logger.info(f"Loading {len(files)} files in parallel with {n_workers} workers")
+        with ProcessPoolExecutor(max_workers=n_workers) as ex:
+            graphs = list(ex.map(self._read_single_graph, files))
+
+        self.logger.info("All subgraphs loaded. Starting merge...")
+
+        # 2) Sequential pairwise merge for determinism and simplicity
+        full_g = graphs[0]
+        for i, sg in enumerate(graphs[1:], start=1):
+            self.logger.info(f"Merging graph {i+1}/{len(graphs)}: sg nodes={sg.vcount()}, edges={sg.ecount()}")
+            full_g = self._merge_two_igraphs_preserve_time(full_g, sg, temporal=self.temporal_graph)
+
+        self.logger.info(f"Full graph loaded with {full_g.vcount()} vertices and {full_g.ecount()} edges")
+        return full_g
+
+    @staticmethod
+    def _merge_two_igraphs_preserve_time(g1: ig.Graph, g2: ig.Graph, temporal: bool = False) -> ig.Graph:
+        """
+        Merge two igraph Graphs by vertex 'name', preserving edge attributes:
+        - 'type' (if present)
+        - 'weight' (if present)
+        - 'time' (if temporal and present)
+        The merged graph will have vertices ordered by first occurrence (g1 then new g2 names).
+        """
+        # Build name -> idx mapping (deterministic ordering)
+        names = []
+        types = []
+        name2idx = {}
+
+        for g in (g1, g2):
+            for v in g.vs:
+                n = v["name"]
+                if n not in name2idx:
+                    name2idx[n] = len(names)
+                    names.append(n)
+                    # store 'type' if present else None
+                    try:
+                        types.append(v["type"])
+                    except Exception:
+                        types.append(None)
+
+        master = ig.Graph(directed=True)
+        master.add_vertices(len(names))
+        master.vs["name"] = names
+        # set vertex 'type' only if at least one non-None
+        if any(t is not None for t in types):
+            master.vs["type"] = [t if t is not None else "u" for t in types]
+        else:
+            # no type attribute across vertices; skip setting to avoid attribute errors later
+            pass
+
+        # prepare edge lists and attributes
+        all_sources = []
+        all_targets = []
+        all_types = []
+        all_weights = []
+        all_times = [] if temporal else None
+
+        def extend_from_graph(g):
+            # map local vertex ids -> master ids using names
+            local_names = list(g.vs["name"])
+            local_map = [name2idx[n] for n in local_names]  # list of master indices aligned to local id
+            # edges as pairs of master indices
+            for (s, t) in g.get_edgelist():
+                all_sources.append(local_map[s])
+                all_targets.append(local_map[t])
+            # attributes: if attribute missing, attempt to provide defaults to keep lists aligned
+            if "type" in g.es.attribute_names():
+                all_types.extend(list(g.es["type"]))
+            else:
+                all_types.extend([None] * g.ecount())
+            if "weight" in g.es.attribute_names():
+                all_weights.extend([float(w) if w is not None else 1.0 for w in g.es["weight"]])
+            else:
+                all_weights.extend([1.0] * g.ecount())
+            if temporal:
+                if "time" in g.es.attribute_names():
+                    all_times.extend(list(g.es["time"]))
+                else:
+                    # if temporal requested but missing in subgraph, append None
+                    all_times.extend([None] * g.ecount())
+
+        extend_from_graph(g1)
+        extend_from_graph(g2)
+
+        # add edges and assign edge attributes
+        if all_sources:
+            master.add_edges(list(zip(all_sources, all_targets)))
+            # set 'type' attribute if any non-None
+            if any(t is not None for t in all_types):
+                # fallback missing types to a sentinel 'u'
+                master.es["type"] = [t if t is not None else "u" for t in all_types]
+            else:
+                # leave unset or set to default if you prefer
+                master.es["type"] = ["u"] * len(all_types)
+
+            master.es["weight"] = all_weights
+            if temporal:
+                master.es["time"] = all_times
+
+        return master
+
 
     def read_csv_files_in_folder_parallel(self, path, chunk_size=100, header=False):
         """

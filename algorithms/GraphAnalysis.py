@@ -86,7 +86,7 @@ class GraphAnalysis:
             if self.parameters.do_read_from_edge_list:
                 w.read_csv_in_batch(self.parameters.graph_file_path[0], self.parameters.pickle_graph_path, 300000)
             if self.parameters.do_read_graph_from_file:
-                g = w.read_pickle(self.parameters.pickle_graph_path)
+                g = w.read_pickle_parallel_preserve_time(self.parameters.pickle_graph_path)
 
         if self.parameters.do_community_detection_combo:
             combo_instance = Combo()
@@ -112,7 +112,7 @@ class GraphAnalysis:
                     resolution_parameter_range=(0.1, 1.0),
                     lambda_temporal=0.1,
                     cap_bonus=1,
-                    n_iterations=10,
+                    n_iterations=2,
                 )   
                 for rp in rps:
                     leiden_instance.export_partition(leiden_instance.get_graph(), rp,

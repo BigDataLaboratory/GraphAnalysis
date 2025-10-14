@@ -7,10 +7,16 @@ from collections import defaultdict
 from datetime import timedelta, timezone, datetime
 from enum import Enum
 from zoneinfo import ZoneInfo
+import ast
+import json
 
 import pytz
 from pymongo import ASCENDING
 
+import sys
+
+# Queste due righe dicono a Python di guardare anche nella cartella principale
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from Utils.Const import Const as c
 from Utils.Utils import Utils
 from Utils.Writer import Writer
@@ -102,17 +108,80 @@ class GraphGeneration(MongoConnection):
         """
         o = []
         m = set()
+        ### 1. Inizializziamo il dizionario delle statistiche per questo tweet
+        stats = {}
+
+        ### 2. Identificazione del tipo
+        is_retweet = d.get('retweeted_status', None) is not None
+        is_reply = d.get('in_reply_to_status_id', None) is not None
+
         n_user_id = Utils.hash(d['user']['id'])
         m.add((d['user']['id'], n_user_id, 0))
 
+        # --- VERIFIED STATUS ---
+        # verified è un booleano (True/False). Lo trasformiamo in 1/0
+        is_verified = 1 if d['user'].get('verified', False) else 0
+
+        # --- ACCOUNT AGE ---
+        # Se non ho una data fissa, uso quella del tweet corrente (d['created_at'])
+        # come punto di riferimento per l'età dell'account in quel momento.
+        user_created_at = d['user'].get('created_at')
+        tweet_date = d.get('created_at')
+        account_age_days = 0
+        if user_created_at and tweet_date:
+            # Calcoliamo la differenza tra quando è stato scritto il tweet 
+            # e quando è nato l'account
+            delta = tweet_date - user_created_at
+            account_age_days = delta.days
+
+        # PRENDIAMO I LIKE
+        current_likes = d['user'].get('favourites_count', 0)
+        current_followers = d['user'].get('followers_count', 0)
+        current_following = d['user'].get('friends_count', 0)
+
+        # AGGIUNTA HASHTAG: Estraiamo gli hashtag unici di questo tweet
+        raw_ht = d.get('hashtagEntities', "")
+        if isinstance(raw_ht, str) and raw_ht.strip():
+            # Dividiamo la stringa e puliamo gli spazi
+            hashtags_set = set(tag.strip().lower() for tag in raw_ht.split('|') if tag.strip())
+        else:
+            hashtags_set = set()
+
+        # GESTIONE MENZIONI (Aggiungi questo qui sotto) ---
+        raw_mentions = d.get('userMentionEntities', "")
+        if isinstance(raw_mentions, str) and raw_mentions.strip():
+            # Dividiamo la stringa delle menzioni e puliamo gli spazi
+            mentions_set = set(m.strip().lower() for m in raw_mentions.split('|') if m.strip())
+        else:
+            mentions_set = set()
+
+        # Prepariamo i dati per l'utente corrente
+        # Contiamo 1 tweet totale e 0 retweet di base
+        stats[n_user_id] = {'total': 1,
+                            'retweets': 1 if is_retweet else 0,
+                            'reply': 1 if is_reply else 0,
+                            'original': 1 if (not is_retweet and not is_reply) else 0,
+                            'likes': current_likes,
+                            'followers': current_followers,
+                            'following': current_following,
+                            'verified': is_verified,
+                            'account_age_days': account_age_days,
+                            'timestamp': d['created_at'].timestamp(),
+                            'hashtags': hashtags_set,
+                            'mentions': mentions_set
+                            }
+
         weight = 1
 
-        if d.get('retweeted_status', None) is not None and self.retweet:
-            relationship_u_rt = 0
-            n_rt_user_id = Utils.hash(d['retweeted_status']['user']['id'])
-            e_rt = n_user_id, n_rt_user_id, weight, relationship_u_rt
-            o.append(e_rt)
-            m.add((d['retweeted_status']['user']['id'], n_rt_user_id, 1))
+        if is_retweet:
+            # Se entriamo qui, il tweet corrente è un retweet. Incrementiamo il contatore.
+            stats[n_user_id]['retweets'] = 1
+            if self.retweet:
+                relationship_u_rt = 0
+                n_rt_user_id = Utils.hash(d['retweeted_status']['user']['id'])
+                e_rt = n_user_id, n_rt_user_id, weight, relationship_u_rt
+                o.append(e_rt)
+                m.add((d['retweeted_status']['user']['id'], n_rt_user_id, 1))
 
         if d.get('retweeted_status', None) is not None and self.tweet_retweet:
             relationship_t_rt = 1
@@ -144,6 +213,8 @@ class GraphGeneration(MongoConnection):
             o.extend(e_hts_inverse)
 
         if d.get('in_reply_to_user_id', -1) != -1 and self.response:
+            # 1. Questa è la tua aggiunta per il conteggio
+            stats[n_user_id]['reply'] = 1
             relationship = 4
             n_reply_user_id = Utils.hash(d['in_reply_to_user_id'])
             e_reply = n_user_id, n_reply_user_id, weight, relationship
@@ -155,8 +226,12 @@ class GraphGeneration(MongoConnection):
                                                                                    str) else []
             e_mentions = [(n_user_id, Utils.compute_hash(x), weight, relationship) for x in n_mentions]
             o.extend(e_mentions)
+        
+        if not is_retweet and d.get('in_reply_to_user_id', -1) == -1:
+            stats[n_user_id]['original'] = 1
 
-        return o, m
+        # Cambiamo il return per restituire anche le stats
+        return o, m, stats
 
     def process_bucket_document(self, d):
         """
@@ -284,7 +359,7 @@ class GraphGeneration(MongoConnection):
                         final_result_graph.append((k[0], k[1], k[2], k[3], v[0], v[1]))
                     
                 Writer.write_on_csv(merged_file_path, final_result_graph)
-            elif method == "full":
+            else:
                 aggregated_results = defaultdict(lambda: 0)  # Structure: { (key1, key2): sum_third }
                 for file_path in list_checkpoint_files:
                     checkpoint_data = Writer.load_checkpoint_file(file_path)
@@ -321,6 +396,105 @@ class GraphGeneration(MongoConnection):
             unique_data = list(set(tuple(row) for row in all_data))  # Remove duplicates by converting to set and back to list
             Writer.write_on_csv(merged_file_path, unique_data)
 
+            # --- AGGREGAZIONE FINALE DELLE USER STATS ---
+        self.logger.info("Merging user statistics...")
+        
+        # Cerchiamo i file di statistiche creati dai worker
+        stats_dir = os.sep.join([checkpoint_dir, "USER_STATS"])
+        if os.path.exists(stats_dir):
+            all_stats_files = Writer.list_checkpoint_files(os.sep.join([stats_dir, "*"]))
+            
+            final_user_metrics = {} # Qui uniremo tutto
+
+            for file_path in all_stats_files:
+                worker_stats = Writer.load_checkpoint_file(file_path)
+                
+                for row in worker_stats:
+                    # row dovrebbe essere: [user_id, total, retweets, reply, original, likes, timestamp]
+                    uid = row[0]
+                    t_tweets = int(row[1])
+                    t_rt = int(row[2])
+                    t_rep = int(row[3])
+                    t_orig = int(row[4])
+                    t_likes = int(row[5])
+                    t_followers = int(row[6]) if len(row) > 6 and row[6] != "" else 0
+                    t_following = int(row[7]) if len(row) > 7 and row[7] != "" else 0
+                    t_verified = int(row[8]) if len(row) > 8 and row[8] != "" else 0
+                    t_account_age = int(row[9]) if len(row) > 9 and row[9] != "" else 0
+                    t_time = float(row[10]) if len(row) > 10 and row[10] != "" else 0.0
+                    hashtags_list = []
+                    mentions_list = []
+
+                    if len(row) > 11 and row[11]:
+                        try:
+                            hashtags_list = json.loads(row[11])
+                        except Exception:
+                            hashtags_list = []
+                    if len(row) > 12 and row[12]:
+                        try:
+                            mentions_list = json.loads(row[12])
+                        except Exception:
+                            mentions_list = []
+
+                    if uid not in final_user_metrics:
+                        final_user_metrics[uid] = {
+                            'total': t_tweets,
+                            'retweets': t_rt,
+                            'reply': t_rep,
+                            'original': t_orig,
+                            'likes': t_likes,
+                            'followers': t_followers,
+                            'following': t_following,
+                            'verified': t_verified,
+                            'account_age_days': t_account_age,
+                            'timestamp': t_time,
+                            'hashtags': set(hashtags_list),
+                            'mentions': set(mentions_list)
+                        }
+                    else:
+                        # Sum counts
+                        final_user_metrics[uid]['total'] += t_tweets
+                        final_user_metrics[uid]['retweets'] += t_rt
+                        final_user_metrics[uid]['reply'] += t_rep
+                        final_user_metrics[uid]['original'] += t_orig
+
+                        # Merge hashtag and mention sets
+                        final_user_metrics[uid]['hashtags'].update(hashtags_list)
+                        final_user_metrics[uid]['mentions'].update(mentions_list)
+
+                        # Update likes/followers/following/verified/account_age if this record is more recent
+                        if t_time > final_user_metrics[uid]['timestamp']:
+                            final_user_metrics[uid]['likes'] = t_likes
+                            final_user_metrics[uid]['followers'] = t_followers
+                            final_user_metrics[uid]['following'] = t_following
+                            final_user_metrics[uid]['verified'] = t_verified
+                            final_user_metrics[uid]['account_age_days'] = t_account_age
+                            final_user_metrics[uid]['timestamp'] = t_time
+
+            # Transform into list for CSV with requested fields:
+            # uid, total, retweets, reply, original, likes (latest), followers (latest), following (latest),
+            # verified (latest), account_age_days (latest), unique_hashtags_count, unique_mentions_count
+            final_stats_list = []
+            for uid, data in final_user_metrics.items():
+                final_stats_list.append((
+                    uid,
+                    data['total'],
+                    data['retweets'],
+                    data['reply'],
+                    data['original'],
+                    data.get('likes', 0),
+                    data.get('followers', 0),
+                    data.get('following', 0),
+                    data.get('verified', 0),
+                    data.get('account_age_days', 0),
+                    len(data.get('hashtags', set())),
+                    len(data.get('mentions', set()))
+                ))
+
+            stats_output_path = os.sep.join([self.output_file_path, self.id, "final_user_stats"])
+            Writer.write_on_csv(stats_output_path, final_stats_list)
+            self.logger.info(f"User statistics saved to {stats_output_path}.csv")
+
     def save_checkpoint(self, intermediate_results, intermediate_map, process_id):
         """
         Saves intermediate results and maps to checkpoint files.
@@ -338,8 +512,17 @@ class GraphGeneration(MongoConnection):
         result_map = {MapType(0).name: [], MapType(1).name: [], MapType(2).name: [], MapType(3).name: []}
 
         for k, v in intermediate_results.items():
-            result_graph[GraphType(k[2]).name].append((k[2], k[0], k[1], v)) if k[2] != 1 else result_graph[
+            # k is a tuple whose position of graph type depends on bucket/full mode
+            # For full mode we used (src, dst, graph_type)
+            # For bucket mode we used (src, dst, date, graph_type)
+            if len(k) == 3:
+                # full mode
+                result_graph[GraphType(k[2]).name].append((k[2], k[0], k[1], v)) if k[2] != 1 else result_graph[
                 GraphType(k[2]).name].append((k[2], k[0], k[1], v[0], v[1]))
+            else:
+                # bucket mode
+                result_graph[GraphType(k[3]).name].append((k[3], k[0], k[1], k[2], v)) if k[3] != 1 else result_graph[
+                    GraphType(k[3]).name].append((k[3], k[0], k[1], k[2], v[0], v[1]))
 
         for e in intermediate_map:
             result_map[MapType(e[2]).name].append(e)
@@ -353,6 +536,40 @@ class GraphGeneration(MongoConnection):
             file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), c.MAP, str(process_id)])
             path = os.sep.join([dir_path, file_path])
             Writer.write_on_csv(path, result_map[k])
+    
+
+    def save_stats_checkpoint(self, intermediate_stats, process_id):
+    
+            rows = []
+            for uid, s in intermediate_stats.items():
+                # Serializziamo i set in JSON per evitare eval()
+                h_json = json.dumps(list(s['hashtags']))
+                m_json = json.dumps(list(s['mentions']))
+            
+                # Scriviamo tutti i campi richiesti
+                # Usiamo il tabulatore \t per evitare problemi con virgole nei testi
+                row = [
+                    str(uid),
+                    str(s.get('total', 0)),
+                    str(s.get('retweets', 0)),
+                    str(s.get('reply', 0)),
+                    str(s.get('original', 0)),
+                    str(s.get('likes', 0)),
+                    str(s.get('followers', 0)),
+                    str(s.get('following', 0)),
+                    str(s.get('verified', 0)),
+                    str(s.get('account_age_days', 0)),
+                    str(s.get('timestamp', 0)),
+                    h_json, # Hashtag serializzati
+                    m_json  # Menzioni serializzate
+                ]
+                rows.append(row)
+
+            # Ensure directory exists and write using Writer
+            dir_path = os.sep.join([self.output_file_path, self.checkpoint_folder, str(self.id), "USER_STATS"])
+            os.makedirs(dir_path, exist_ok=True)
+            file_path = os.sep.join([dir_path, str(process_id)])
+            Writer.write_on_csv(file_path, rows)
 
     def save_bucket_checkpoint(self, intermediate_results, intermediate_map, process_id):
         """
@@ -494,8 +711,45 @@ class GraphGeneration(MongoConnection):
 
             intermediate_result = {}
             intermediate_map = set()
+            intermediate_stats = {}
+
             for i, document in enumerate(cursor, 1):
-                edges, maps = self.process_document(document)
+                edges, maps, tweet_stats = self.process_document(document)
+
+                for uid, s in tweet_stats.items():
+                    if uid not in intermediate_stats:
+                        intermediate_stats[uid] = {
+                            'total': s['total'],
+                            'retweets': s['retweets'],
+                            'reply': s['reply'],
+                            'original': s['original'],
+                            'likes': s['likes'],
+                            'followers': s['followers'],
+                            'following': s['following'],
+                            'verified': s['verified'],
+                            'account_age_days': s['account_age_days'],
+                            'timestamp': s['timestamp'],
+                            'hashtags': set(s.get('hashtags', set())),
+                            'mentions': set(s.get('mentions', set()))
+                        }
+                    else:
+                        intermediate_stats[uid]['total'] += s['total']
+                        intermediate_stats[uid]['retweets'] += s['retweets']
+                        intermediate_stats[uid]['reply'] += s['reply']
+                        intermediate_stats[uid]['original'] += s['original']
+
+                        # Merge sets
+                        intermediate_stats[uid]['hashtags'].update(s.get('hashtags', set()))
+                        intermediate_stats[uid]['mentions'].update(s.get('mentions', set()))
+
+                        # Update snapshot fields if this tweet is more recent
+                        if s['timestamp'] > intermediate_stats[uid]['timestamp']:
+                            intermediate_stats[uid]['likes'] = s['likes']
+                            intermediate_stats[uid]['followers'] = s['followers']
+                            intermediate_stats[uid]['following'] = s['following']
+                            intermediate_stats[uid]['verified'] = s['verified']
+                            intermediate_stats[uid]['account_age_days'] = s['account_age_days']
+                            intermediate_stats[uid]['timestamp'] = s['timestamp']
 
                 for item in edges:
                     key = (item[0], item[1], item[-1])
@@ -511,11 +765,16 @@ class GraphGeneration(MongoConnection):
                 # Save checkpoint after every `checkpoint_interval` documents
                 if i % checkpoint_interval == 0:
                     self.save_checkpoint(intermediate_result, intermediate_map, process_id)
+                    # AGGIUNGI IL SALVATAGGIO STATS (vedi sotto come fare)
+                    self.save_stats_checkpoint(intermediate_stats, process_id)
                     intermediate_result = {}
                     intermediate_map = set()
+                    intermediate_stats = {} # Svuota
             # Final save for any remaining results
             if intermediate_result:
                 self.save_checkpoint(intermediate_result, intermediate_map, process_id)
+            if intermediate_stats:
+                self.save_stats_checkpoint(intermediate_stats, process_id)
         
         self.logger.info(f"[Worker {process_id}] Final checkpoint saved")
         client.close()
@@ -543,21 +802,15 @@ class GraphGeneration(MongoConnection):
         Writer.create_dirs(self.output_file_path, self.id)
 
         max_workers = min(4, len(chunks)) # Limit the number of workers to 30 or the number of chunks, whichever is smaller
-        futures = []
-
-        self.logger.info(f"Processing {len(chunks)} chunks with {max_workers} workers.")
-
-        # Use ProcessPoolExecutor to process chunks in parallel
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            for i, chunk in enumerate(chunks):
-                future = executor.submit(
-                    self.worker_process, where, project, method, chunk, batch_size, checkpoint_interval, i)
-                futures.append(future)
-            for future in as_completed(futures):
-                try:
-                    self.logger.info(f"[Worker] {future.result()}")
-                except Exception as e:
-                    self.logger.error(f"[Worker] A worker failed: {e}")
+        self.logger.info(f"Processing {len(chunks)} chunks with up to {max_workers} workers (sequential execution).")
+        # Sequential processing to avoid pickling self. If you need parallelism, refactor worker_process.
+        for i, chunk in enumerate(chunks):
+            try:
+                self.logger.info(f"[Worker {i}] Starting chunk {i} ({chunk[0]} -> {chunk[1]})")
+                result = self.worker_process(where, project, method, chunk, batch_size, checkpoint_interval, i)
+                self.logger.info(f"[Worker {i}] {result}")
+            except Exception as e:
+                self.logger.error(f"[Worker {i}] Failed: {e}")
     
         self.logger.info("All chunks processed. Merging and aggregating results.")
         self.merge_and_aggregate_checkpoints(method)

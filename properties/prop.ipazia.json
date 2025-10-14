@@ -53,7 +53,7 @@
       "graph_file_path": [
         "/ipazianas/pasquini/output_graph_analysis/feb-oct_week_2022/6500962c9d1611f0948408f1eaf4fe18/retweet"
       ],
-      "pickle_graph_file_path": "/ipazianas/pasquini/twitter_graph_dump/feb_oct_2022"
+      "pickle_graph_file_path": "/dev/shm/feb_oct_2022"
     },
     "leiden": {
       "to_execute": true,
