@@ -17,7 +17,6 @@ import datetime as dt
 
 from Utils.Writer import Writer
 
-
 class Leiden:
     logger = logging.getLogger('Leiden')
 
@@ -246,316 +245,170 @@ class Leiden:
 
         return [remap[lab] for lab in curr_labels]
 
-    def compute_leiden_incremental(self,
-                                   method="CPM",
-                                   resolution_parameter=0.06,
-                                   lambda_temporal=0.02,
-                                   cap_bonus=0.30,
-                                   debug_sample_nodes=None,
-                                   max_edges=None,
-                                   max_slices=None,
-                                   n_iterations=2,
-                                   edge_types_keep=None):
-        """Performs incremental community detection with a temporal bonus.
-
-        This method processes a temporal graph slice by slice. For each slice, it runs
-        the Leiden algorithm, incorporating information from the previous slice to
-        ensure temporal stability of the communities. This is achieved through:
-        1.  Warm Start: Using the previous slice's partition as the initial state
-            for the current slice's optimization.
-        2.  Temporal Bonus: A vectorized bonus is added to the weights of edges
-            connecting nodes that were in the same community previously. The bonus
-            increases with "tenure" i.e., the number of consecutive slices the
-            nodes have shared a community.
-
-        The final community labels are realigned across slices to maintain consistent
-        identifiers for continuous communities over time.
-
-        Args:
-            method (str): The quality function for Leiden ('CPM' or 'Modularity').
-            resolution_parameter (float): The resolution parameter for the CPM method.
-            lambda_temporal (float): The base factor for the temporal bonus.
-            cap_bonus (float): The maximum bonus an edge can receive from the
-                temporal smoothing logic.
-            debug_sample_nodes (int, optional): If set, randomly samples this
-                many nodes for faster debugging. Defaults to None.
-            max_edges (int, optional): If set, keeps only the top N edges by
-                weight for faster debugging. Defaults to None.
-            max_slices (int, optional): If set, processes only this many time
-                slices. Defaults to None.
-            n_iterations (int): Number of iterations for the Leiden algorithm.
-            edge_types_keep (list, optional): A list of edge type strings to
-                keep; all others are filtered out. Defaults to None.
-
-        Returns:
-            tuple: A tuple containing:
-                - memberships (list): A list of tuples, where each tuple represents a
-                  time slice and contains `(list_of_names, list_of_labels)`.
-                - dates (list): A list of datetime objects corresponding to each slice.
+    def compute_leiden_incremental_progressive(
+        self,
+        method="CPM",
+        resolution_parameter=0.06,
+        lambda_temporal=0.02,
+        cap_bonus=0.30,
+        debug_sample_nodes=None,
+        max_edges=None,
+        max_slices=None,
+        n_iterations=2,
+        edge_types_keep=None,
+    ):
         """
-                
-        self.logger.info(f"Start Leiden incrementale ({method})")
+        Incremental Leiden with temporal continuity, optimized for progressive CSV writing.
+
+        Each slice’s memberships are appended to disk immediately, avoiding
+        reloading and rewriting the full master file every iteration.
+
+        Output format (per slice append):
+            name,date,community
+        """
+
+        self.logger.info(f"Start Leiden incrementale ({method}) [progressive CSV mode]")
         self._print_memory_usage("Dopo setup iniziale")
 
-        prev_comm_by_name = {} # serve a mappare nodo nella community precedente
-        tenure_by_name = {} # serve a mappare nodo nei valori di tenure
-        memberships = [] # questa e le seguenti per raccogliere l'andamento
+        prev_comm_by_name = {}
+        tenure_by_name = {}
+        memberships = []
         dates = []
-
         processed = 0
 
         slices_iter = self.iter_weekly_slices(self.data_graph)
-        output_dir = f"leiden_results_{self.id}"
-        resolution_key = str(resolution_parameter)
-        os.makedirs(output_dir, exist_ok=True)
-        master_file = os.path.join(output_dir, f"communities_{resolution_key}.csv")
 
-        for date_val, G in slices_iter: # Loop sulle slice (una per volta)
-            if max_slices is not None and processed >= max_slices:  # interrompe se supera max_slices (parametro)
+        # --- Output paths ---
+        resolution_key = str(resolution_parameter)
+        output_dir = "/scratch/pasquini/leiden_slices_csv"
+        os.makedirs(output_dir, exist_ok=True)
+        master_file = os.path.join(output_dir, f"leiden_progressive_{resolution_key}.csv")
+
+        # --- Write CSV header once ---
+        if not os.path.exists(master_file):
+            with open(master_file, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["name", "date", "community"])
+
+        for date_val, G in slices_iter:
+            if max_slices is not None and processed >= max_slices:
                 break
             processed += 1
-
-            # salva la data della slice corrente (Viene dal generatore read_slices_streaming / merge_slices_by_date, 
-            # che per ogni sotto-grafo ti dà (data, grafo).), 
-            # la aggiunge a dates in modo che alla fine abbiamo Alla fine, 
-            # dates conterrà tutte le date in cui hai analizzato una slice, nell’ordine giusto.
-
             dates.append(date_val)
             self._print_memory_usage(f"Prima della slice {date_val}")
 
-            '''
-                Filtro per tipo di arco (si imposta tramite parametro edge_types_keep).
-                Normalizza type a int.
-                Tiene solo gli archi con type desiderato.
+            # --- Filter edges by type and/or weight ---
+            if (edge_types_keep is not None and "type" in G.es.attributes()) or (max_edges is not None):
+                edges_to_keep = np.ones(G.ecount(), dtype=bool)
 
-                 Usa subgraph_edges(..., delete_vertices=False) per non perdere i nodi inattivi (grande per coerenza temporale).
-            '''
+                if edge_types_keep is not None and "type" in G.es.attributes():
+                    edge_types = np.array([str(t) for t in G.es["type"]])
+                    mask_type = np.isin(edge_types, edge_types_keep)
+                    edges_to_keep &= mask_type
 
-            # filtro tipi di archi opzionale
-            if edge_types_keep is not None and "type" in G.es.attributes():
-                # filtra solo i tipi desiderati
-                idx_keep = [e.index for e in G.es if str(e["type"]) in edge_types_keep]
+                if max_edges is not None and G.ecount() > max_edges:
+                    weights = np.array(G.es["weight"], dtype=float) if "weight" in G.es.attribute_names() else np.ones(G.ecount())
+                    topk_idx = np.argsort(-weights)[:max_edges]
+                    mask_topk = np.zeros(G.ecount(), dtype=bool)
+                    mask_topk[topk_idx] = True
+                    edges_to_keep &= mask_topk
+
+                idx_keep = np.where(edges_to_keep)[0]
                 G = G.subgraph_edges(idx_keep, delete_vertices=False)
+                self.logger.info(f"[{date_val}] Filtered edges -> {G.vcount():,} nodes, {G.ecount():,} edges")
 
-            names = G.vs["name"] #chiave univoca tra slice diverse 
-
-            # sample nodi (debug)
+            # --- Debug subsampling ---
             if debug_sample_nodes is not None and G.vcount() > debug_sample_nodes:
                 G = G.induced_subgraph(range(debug_sample_nodes))
-                names = G.vs["name"]
-                self.logger.info(f"[{date_val}] DEBUG sample nodes -> {G.vcount():,} nodi, {G.ecount():,} archi")
+                self.logger.info(f"[{date_val}] DEBUG sample nodes -> {G.vcount():,} nodes, {G.ecount():,} edges")
 
-
-            '''
-                Tiene i top-K archi più pesanti (se max_edges è settato).
-                Usa subgraph_edges(..., delete_vertices=False) per non perdere i nodi inattivi
-            '''
-
-            # limita archi (debug)
-            if max_edges is not None and G.ecount() > max_edges:
-                if "weight" in G.es.attribute_names():
-                    weights = np.asarray([float(w) if w is not None else 1.0 for w in G.es["weight"]], dtype=float)
-                else:
-                    G.es["weight"] = [1.0] * G.ecount()
-                    weights = np.asarray(G.es["weight"], dtype=float)
-                idx = np.argsort(-weights)[:max_edges]
-                G = G.subgraph_edges(idx.tolist(), delete_vertices=False)
-                names = G.vs["name"]
-                self.logger.info(f"[{date_val}] DEBUG sample edges -> {G.vcount():,} nodi, {G.ecount():,} archi")
-
-            '''
-            imposta tutti i pesi come float (se non ci sono, li crea tutti a 1.0).
-            '''
-
-            # pesi float
+            # --- Ensure weights ---
             if "weight" not in G.es.attribute_names():
                 G.es["weight"] = [1.0] * G.ecount()
             else:
                 G.es["weight"] = [float(w) if w is not None else 1.0 for w in G.es["weight"]]
-            
 
-            '''
-            Parte fondamentale: inizializza leiden utilizzando le comunità precedenti (warm start).
-            ES: senza questa parte, ogni slice sarebbe indipendente e non avrebbe continuità temporale, cioè le comunità avrebbero una label diversa ogni slice.
-            '''
+            names = np.array(G.vs["name"], dtype=object)
 
-            # warm start
+            # --- Warm start: previous memberships ---
             initial_membership = None
-            if prev_comm_by_name: # se abbiamo già la partizione del giorno precedente
+            if prev_comm_by_name:
                 next_label = max(prev_comm_by_name.values(), default=-1) + 1
-                init_labels = []
-                for n in names:
-                    label = prev_comm_by_name.get(n)
-                    if label is None:
-                        # Assign a new, unique label for each new node
-                        init_labels.append(next_label)
-                        next_label += 1
+                init_labels = np.full(len(names), -1, dtype=int)
+                for i, n in enumerate(names):
+                    if n in prev_comm_by_name:
+                        init_labels[i] = prev_comm_by_name[n]
                     else:
-                        init_labels.append(label)
-
-                # Use np.unique for a highly efficient re-compacting of labels
+                        init_labels[i] = next_label
+                        next_label += 1
                 _, initial_membership = np.unique(init_labels, return_inverse=True)
                 initial_membership = initial_membership.tolist()
 
-            # bonus temporale sugli archi intra-comunità (stessa community precedente)
-
-            '''
-            Crea array comm (label del giorno precedente per ogni nodo attuale) e ten (tenure).
-
-            prev_comm[n]: se il nodo esisteva ieri, prende la comunità; se no, -1 (significa “nessuna comunità precedente”).
-            prev_tenure[n]: se il nodo esisteva ieri, prende la tenure; se no, 0.
-
-            comm = np.array([prev_comm[n] for n in names]) → per ogni nodo nell’ordine della slice attuale, inserisce la label precedente.
-
-            ten = np.array([prev_tenure[n] for n in names]) → stesso discorso ma con la tenure.
-
-            mask: veri e falsi per ogni arco: True se i due nodi dell’arco erano nella stessa comunità ieri (cu==cv>=0).
-            tau: tenure “di coppia”: prende il min fra le due tenure (conservativo). → più a lungo due nodi restano insieme, più bonus all’arco (fino a cap_bonus).
-            Applica il bonus solo agli archi mask==True, riscrivendo i pesi.
-            
-            '''
-
+            # --- Temporal bonus ---
             boosted = 0
             total_bonus = 0.0
             if prev_comm_by_name and lambda_temporal > 0 and G.ecount() > 0:
-                edges = np.array(G.get_edgelist(), dtype=int)
-                sources = edges[:, 0]
-                targets = edges[:, 1]
+                edges = np.asarray(G.get_edgelist(), dtype=np.int32)
+                src, dst = edges[:, 0], edges[:, 1]
+                name_to_idx = {n: i for i, n in enumerate(names)}
 
-                # build NumPy arrays, avoiding intermediate dictionaries
-                comm = np.array([prev_comm_by_name.get(n, -1) for n in names], dtype=int)
-                ten = np.array([tenure_by_name.get(n, 0) for n in names], dtype=int)
+                comm = np.full(len(names), -1, dtype=np.int32)
+                ten = np.zeros(len(names), dtype=np.float32)
 
-                cu = comm[sources]
-                cv = comm[targets]
-                tau = np.minimum(ten[sources], ten[targets])
+                for n, c in prev_comm_by_name.items():
+                    i = name_to_idx.get(n)
+                    if i is not None:
+                        comm[i] = c
+                for n, t in tenure_by_name.items():
+                    i = name_to_idx.get(n)
+                    if i is not None:
+                        ten[i] = t
 
+                cu, cv = comm[src], comm[dst]
+                tau = np.minimum(ten[src], ten[dst])
                 mask = (cu == cv) & (cu >= 0)
 
-                '''
-                    conta e logga quanti archi hanno ricevuto il bonus e la somma dei bonus applicati (fino a if boosted: self llogger.info(...)).
-                    mask è un array booleano lungo #archi che dice per ogni arco se i due nodi erano nella stessa comunità ieri (True = arco idoneo al bonus).
-
-                    mask.sum() → conta quanti True ci sono, cioè quanti archi hanno ricevuto un bonus.
-
-                    bonuses.sum() → somma effettiva dei bonus aggiunti a quegli archi.
-                '''
-
                 if np.any(mask):
-                    bonuses = np.minimum(lambda_temporal * (1 + tau[mask]), cap_bonus)
-                    w = np.array(G.es["weight"], dtype=float)
+                    bonuses = np.minimum(lambda_temporal * (1.0 + tau[mask]), cap_bonus)
+                    w = np.asarray(G.es["weight"], dtype=np.float32)
                     w[mask] += bonuses
                     G.es["weight"] = w.tolist()
-
                     boosted = int(mask.sum())
                     total_bonus = float(bonuses.sum())
 
             if boosted:
                 self.logger.info(f"[{date_val}] boosted_edges={boosted:,}, bonus≈{total_bonus:.2f}")
 
-            # Leiden
-            '''
+            # --- Run Leiden ---
+            self.logger.info(f"[{date_val}] start Leiden (nodes={G.vcount():,}, edges={G.ecount():,})")
+            partition_cls = la.CPMVertexPartition if method == "CPM" else la.ModularityVertexPartition
+            part = la.find_partition(
+                G,
+                partition_cls,
+                weights="weight",
+                resolution_parameter=resolution_parameter if method == "CPM" else None,
+                initial_membership=initial_membership,
+                n_iterations=n_iterations,
+                seed=42
+            )
 
-            Sceglie la partizione (CPM o Modularity), usa sempre i pesi e il warm start se presente.
+            curr_labels = np.array(part.membership, dtype=int)
+            self.logger.info(f"Leiden {method} quality = {part.quality():.4f}")
 
-            seed=42 per riproducibilità.
-
-            n_iterations: più alto → più rifinitura (ma occhio ai tempi).
-                    
-            '''
-            self.logger.info(f"[{date_val}] start Leiden (nodi={G.vcount():,}, archi={G.ecount():,})")
-            if method == "CPM":
-                part = la.find_partition(
-                    G,
-                    la.CPMVertexPartition,
-                    weights="weight",
-                    resolution_parameter=resolution_parameter,
-                    initial_membership=initial_membership,
-                    n_iterations=n_iterations,
-                    seed=42
-                )
-            elif method == "Modularity":
-                part = la.find_partition(
-                    G,
-                    la.ModularityVertexPartition,
-                    weights="weight",
-                    initial_membership=initial_membership,
-                    n_iterations=n_iterations,
-                    seed=42
-                )
-            else:
-                raise ValueError(f"Metodo non supportato: {method}")
-
-            curr_labels = part.membership
-
-            self.logger.info("Leiden CPM quality value is: {}".format(part.quality()))
-
-
-            # relabel con overlap alle label precedenti
-
-            '''
-            _relabel_with_overlap: mappa le label nuove sulle vecchie cercando il matching con maggior overlap (greedy).
-            Così “la comunità 5” di ieri resta “5” oggi, se c’è continuità di membri. Evita che le etichette saltino ogni giorno.
-            '''
-
-
+            # --- Align community labels ---
             if prev_comm_by_name:
                 curr_labels = self._relabel_with_overlap(prev_comm_by_name, names, curr_labels)
 
             memberships.append(list(curr_labels))
 
+            # --- Progressive CSV append ---
+            with open(master_file, "a", newline="") as f:
+                writer = csv.writer(f)
+                date_str = str(date_val)
+                for n, lab in zip(names, curr_labels):
+                    writer.writerow([n, date_str, int(lab)])
 
-            # aggiorna tenure e label precedenti
-
-            '''
-            Se il nodo resta nella stessa comunità → tenure + 1, altrimenti 0.
-
-            Aggiorna la mappa prev_comm_by_name con le label riallineate 
-            (importante: il bonus del prossimo giorno userà queste).
-            '''
-
-
-            resolution_key = str(resolution_parameter)
-            output_dir = "leiden_slices_csv"
-            os.makedirs(output_dir, exist_ok=True)
-            master_file = os.path.join(output_dir, f"leiden_progressive_{resolution_key}.csv")
-
-            # Se non esiste, crea il CSV iniziale
-            if not os.path.exists(master_file):
-                df_master = pd.DataFrame({
-                    "id": range(len(names)),
-                    "name": names,
-                    "type": G.vs["type"],
-                    resolution_key: [{str(date_val): int(comm)} for comm in curr_labels]
-                })
-                df_master.to_csv(master_file, index=False)
-            else:
-                # Carica solo le colonne necessarie
-                df_master = pd.read_csv(master_file, dtype=str)
-                name_to_index = {n: i for i, n in enumerate(df_master["name"])}
-
-                # Aggiorna solo i nodi presenti in questa slice
-                for name, comm in zip(names, curr_labels):
-                    new_entry = {str(date_val): int(comm)}
-                    if name in name_to_index:
-                        idx = name_to_index[name]
-                        old_str = df_master.at[idx, resolution_key]
-                        try:
-                            old_dict = ast.literal_eval(old_str) if old_str and old_str.strip().startswith("{") else {}
-                        except Exception:
-                            old_dict = {}
-                        old_dict.update(new_entry)
-                        df_master.at[idx, resolution_key] = str(old_dict)
-                    else:
-                        # nuovo nodo mai visto prima
-                        df_master.loc[len(df_master)] = [len(df_master), name, "u", str(new_entry)]
-
-                # Riscrivi tutto, ma senza riconvertire ogni riga a dict
-                tmp_path = master_file + ".tmp"
-                df_master.to_csv(tmp_path, index=False, quoting=csv.QUOTE_NONNUMERIC)
-                os.replace(tmp_path, master_file)
-
-
+            # --- Update tenure and previous labels ---
             new_prev_comm_by_name = {}
             new_tenure_by_name = {}
             for n, lab in zip(names, curr_labels):
@@ -573,9 +426,10 @@ class Leiden:
 
         return memberships, dates
 
+
     def compute_leiden_temporal_incremental(self,
                                         method="CPM",
-                                        resolution_parameter_range=(0.4, 0.5),
+                                        resolution_parameter_range=(0.1, 1.0),
                                         lambda_temporal=0.1,
                                         cap_bonus=1,
                                         n_iterations=10):
@@ -617,7 +471,7 @@ class Leiden:
             start = time.time()
             rp_round = round(rp, 1)
 
-            memberships, dates = self.compute_leiden_incremental(method=method, 
+            memberships, dates = self.compute_leiden_incremental_progressive(method=method, 
                                                                  resolution_parameter=rp_round, 
                                                                  lambda_temporal=lambda_temporal, 
                                                                  cap_bonus=cap_bonus, 
