@@ -1,0 +1,134 @@
+{
+  "log": {
+    "filepath": "./logs/log.log"
+  },
+
+  "graph_generation": {
+    "to_execute": false,
+    "parameters": {
+      "input": {
+        "type": "mongodb",
+        "conf": {
+          "uri": "",
+          "username": "",
+          "password": "",
+          "authName": "",
+          "authMechanism": "",
+          "db_name": "",
+          "collection": "",
+          "chunk_start_date": "01/01/2020",
+          "chunk_end_date": "02/01/2020",
+          "method": "day"
+        }
+      },
+      "graph_type": {
+        "retweet": true,
+        "tweet_retweet": false,
+        "user_hashtag": false,
+        "hashtag_cooccurrences": false,
+        "mention": false,
+        "response": false
+      },
+      "output": {
+        "path": "./resources/",
+        "graph_file_name": {
+          "retweet": "retweet",
+          "response": "response",
+          "mention": "mention",
+          "hashtag": "hashtag",
+          "hashtag_cooccurrences": "hashtag_cooccurrences",
+          "multigraph": "multigraph"
+        },
+        "map_file_name_prefix": "map"
+      }
+    }
+  },
+
+  "community_detection": {
+    "parameters": {
+      "read_from_file": true,
+      "read_from_edge_list": false,
+      "graph_file_path": [],
+      "pickle_graph_file_path": "./snapshot",
+      "temporal": true
+    },
+
+    "leiden": {
+      "to_execute": true,
+
+      "parameters": {
+        "method": "CPM",
+        "n_iterations": 2,
+
+        "lambda_temporal": 2.0,
+
+        "cap_mode": "dynamic",
+        "cap_bonus": 0.30,
+
+        "tenure_mode": "linear",
+        "tenure_exp_k": 0.15,
+
+        "max_slices": 10,
+
+        "community_output_file_path": "./output/communities_leiden"
+      },
+
+      "experiments": {
+        "to_execute": true,
+
+        "resolution_parameters": [
+          0.5
+        ],
+
+        "cap_modes": ["dynamic","static"],
+        "tenure_modes": ["log","exp","linear"],
+
+        "sample_slices": 10
+      }
+    },
+
+    "combo": {
+      "to_execute": false,
+      "parameters": {}
+    },
+
+    "hierarchical": {
+      "to_execute": false,
+      "parameters": {}
+    }
+  },
+
+  "get_users_text": {
+    "to_execute": false,
+    "parameters": {
+      "communities": {
+        "indexes": [],
+        "community_col_name": "community",
+        "read_communities_from_file": false,
+        "community_file_path": ""
+      },
+      "map_file_path": {
+        "read_maps_from_file": false,
+        "user_map": "",
+        "hashtag_map": "",
+        "retweet_user_map": ""
+      },
+      "input": {
+        "type": "json",
+        "conf": {}
+      }
+    }
+  },
+
+  "topic_builder": {
+    "to_execute": false,
+    "parameters": {
+      "topics_file_path": "./resources/topics_info",
+      "docs_file_path": "./resources/docs_info",
+      "model": {
+        "model_path": "./resources/topic_model",
+        "serialization": "pickle"
+      }
+    }
+  }
+}
