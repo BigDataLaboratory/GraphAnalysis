@@ -113,29 +113,33 @@ class GraphAnalysis:
 
             sample_slices = exp.get("sample_slices", max_slices)
             
+            lambda_list = exp.get("lambda_temporals", [lambda_temporal])
+
             for rp in rps_list:
                 rp = float(rp)
-                for cm in cap_modes:
-                    for tm in tenure_modes:
-                        run_tag = f"rp{rp}_cap{cm}_ten{tm}"
+                for lt in lambda_list:
+                    lt = float(lt)
+                    for cm in cap_modes:
+                        for tm in tenure_modes:
+                            run_tag = f"rp{rp}_lam{lt}_cap{cm}_ten{tm}"
 
-                        self.logger.info(f"[EXPERIMENT] Start {run_tag}")
-                        leiden_instance.run_temporal_experiment(
-                            method=method,
-                            resolution_parameter=rp,
-                            lambda_temporal=lambda_temporal,
-                            cap_mode=cm,
-                            cap_bonus=cap_bonus,
-                            tenure_mode=tm,
-                            tenure_exp_k=tenure_exp_k,
-                            dynamic_cap_conf=dynamic_cap_conf,
-                            n_iterations=n_iterations,
-                            max_slices=sample_slices,
-                            debug_sample_nodes=debug_sample_nodes,
-                            max_edges=max_edges,
-                            output_dir=out_dir,
-                            run_tag=run_tag
-                        )
+                            leiden_instance.run_temporal_experiment(
+                                method=method,
+                                resolution_parameter=rp,
+                                lambda_temporal=lt,
+                                cap_mode=cm,
+                                cap_bonus=cap_bonus,
+                                tenure_mode=tm,
+                                tenure_exp_k=tenure_exp_k,
+                                dynamic_cap_conf=dynamic_cap_conf,
+                                n_iterations=n_iterations,
+                                max_slices=sample_slices,
+                                debug_sample_nodes=debug_sample_nodes,
+                                max_edges=max_edges,
+                                output_dir=out_dir,
+                                run_tag=run_tag
+                            )
+
 
         # MODALITÀ SINGLE RUN
 

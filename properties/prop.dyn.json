@@ -91,8 +91,8 @@
 
         "cap_modes": ["dynamic","static"],
         "tenure_modes": ["log","exp","linear"],
-
-        "sample_slices": 10
+        "lambda_temporals": [0.05, 0.10, 0.20,0.00],
+        "sample_slices": null
       }
     },
 
