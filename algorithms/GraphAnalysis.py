@@ -137,10 +137,6 @@ class GraphAnalysis:
                             run_tag=run_tag
                         )
 
-
-
-
-
         # MODALITÀ SINGLE RUN
 
         else:

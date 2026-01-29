@@ -58,7 +58,33 @@
     "leiden": {
       "to_execute": true,
       "parameters": {
-        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/temporal/feb_oct_weekly_2022/retweet"
+        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/temporal/feb_oct_weekly_2022/retweet",.
+        "method": "CPM",
+        "n_iterations": 2,
+        "lambda_temporal": 2.0,
+        "cap_mode": "dynamic",
+        "cap_bonus": 0.30,
+        "tenure_mode": "linear",
+        "tenure_exp_k": 0.15,
+        "max_slices": 10
+      },
+      "experiments": {
+        "to_execute": true,
+        "resolution_parameters": [
+          0.1,
+          0.2,
+          0.3,
+          0.4,
+          0.5,
+          0.6,
+          0.7,
+          0.8,
+          0.9,
+          1.0
+        ],
+        "cap_modes": ["dynamic","static"],
+        "tenure_modes": ["none","log","exp","linear"],
+        "sample_slices": 10
       }
     },
     "combo": {

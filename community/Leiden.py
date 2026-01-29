@@ -548,12 +548,7 @@ class Leiden:
             output_dir=output_dir,
             run_tag=run_tag
         )
-
-
         
-        
-        
-
         return {
             "run_tag": run_tag,
             "method": method,
