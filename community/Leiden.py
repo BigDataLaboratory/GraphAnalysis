@@ -298,6 +298,7 @@ class Leiden:
         dynamic_cap_by_week=None,          # dict: week_str -> cap(t->week)
         tenure_mode="linear",              # none/linear/log/exp
         tenure_exp_k=0.15,
+        memory_decay_half_life_weeks=None,
         debug_sample_nodes=None,
         max_edges=None,
         max_slices=None,
@@ -335,6 +336,8 @@ class Leiden:
         memberships = []
         dates = []
         processed = 0
+        self._last_week_toghether = {}
+        current_week_idx = 0
 
         slices_iter = self.iter_weekly_slices(self.data_graph)
 
@@ -429,6 +432,19 @@ class Leiden:
                         tenure_mode=tenure_mode,
                         tenure_exp_k=tenure_exp_k
                     )
+                    if memory_decay_half_life_weeks is not None and memory_decay_half_life_weeks > 0:
+                        delta_weeks = np.full(len(src), np.inf, dtype=np.float32)
+                        for idx, (u_name, v_name) in enumerate(zip(names[src], names[dst])):
+                            key = tuple(sorted((u_name, v_name)))
+                            last = self._last_week_toghether.get(key)
+                            if last is not None:
+                                delta_weeks[idx] = current_week_idx - last
+                        decay_bonus = lambda_temporal * 2^(-delta_weeks / half_life)
+                        finite_mask = np.isfinite(delta_weeks)
+                        if np.any(finite_mask):
+                            w[finite_mask] += decay_bonus[finite_mask]
+                            total_bonus += decay_bonus[finite_mask]
+                            boosted += np.sum(finite_mask)
 
                     w = np.asarray(G.es["weight"], dtype=np.float32)
                     w[stable_mask] += bonuses
@@ -460,6 +476,19 @@ class Leiden:
             # align labels
             if prev_comm_by_name:
                 curr_labels = np.array(self._relabel_with_overlap(prev_comm_by_name, names, curr_labels), dtype=int)
+            if memory_decay_half_life_weeks is not None and memory_decay_half_life_weeks > 0:
+                comm_to_nodes={}
+                for idx, comm in enumerate(curr_labels):
+                    node_name = names[idx]
+                    comm_to_nodes.setdefault(comm, []).append(node_name)
+                for nodes in comm_to_nodes.values():
+                    if len(nodes) > 1:
+                        for i in range(len(nodes)):
+                            for j in range(i+1, len(nodes)):
+                                a, b = nodes[i], nodes[j]
+                                key = tuple(sorted((a, b)))
+                                self._last_week_toghether[key] = current_week_idx
+                                
 
             memberships.append(list(curr_labels))
 
@@ -505,7 +534,8 @@ class Leiden:
         debug_sample_nodes,
         max_edges,
         output_dir,
-        run_tag
+        run_tag,
+        memory_decay_half_life_weeks=2.0
     ):
         """
         Esegue la run e salva:
