@@ -2,6 +2,7 @@
 import logging
 import os
 import time
+from unittest import result
 import uuid
 import csv
 import datetime as dt
@@ -22,6 +23,8 @@ class Leiden:
     def __init__(self, data_graph: ig.Graph):
         self.id = uuid.uuid1().hex
         self.data_graph = data_graph
+        self._last_together = {}
+
 
     def _print_memory_usage(self, note=""):
         try:
@@ -40,7 +43,7 @@ class Leiden:
         :return: The igraph.Graph instance associated with this Leiden instance.
         """
         return self.data_graph
-
+    
   
     def compute_pagerank(self, data_graph):
          
@@ -336,7 +339,7 @@ class Leiden:
         memberships = []
         dates = []
         processed = 0
-        self._last_week_toghether = {}
+        self._last_together.clear()
         current_week_idx = 0
 
         slices_iter = self.iter_weekly_slices(self.data_graph)
@@ -397,6 +400,9 @@ class Leiden:
             # temporal bonus
             boosted = 0
             total_bonus = 0.0
+            w = None
+
+            use_decay = (memory_decay_half_life_weeks is not None and memory_decay_half_life_weeks > 0)
 
             if prev_comm_by_name and cap_mode != "off" and lambda_temporal > 0 and G.ecount() > 0:
                 edges = np.asarray(G.get_edgelist(), dtype=np.int32)
@@ -405,7 +411,6 @@ class Leiden:
 
                 comm = np.full(len(names), -1, dtype=np.int32)
                 ten = np.zeros(len(names), dtype=np.float32)
-
                 for n, c in prev_comm_by_name.items():
                     i = name_to_idx.get(n)
                     if i is not None:
@@ -418,9 +423,11 @@ class Leiden:
                 cu, cv = comm[src], comm[dst]
                 tau = np.minimum(ten[src], ten[dst])
                 stable_mask = (cu == cv) & (cu >= 0)
+                
+                final_bonus = np.zeros(len(src), dtype=np.float32)
 
                 if np.any(stable_mask):
-                    # cap da usare nella settimana corrente (cap della transizione t-1 -> t)
+                        # cap da usare nella settimana corrente (cap della transizione t-1 -> t)
                     cap_value = float(cap_bonus)
                     if cap_mode == "dynamic" and dynamic_cap_by_week is not None:
                         cap_value = float(dynamic_cap_by_week.get(str(week_str), cap_bonus))
@@ -432,27 +439,29 @@ class Leiden:
                         tenure_mode=tenure_mode,
                         tenure_exp_k=tenure_exp_k
                     )
-                    if memory_decay_half_life_weeks is not None and memory_decay_half_life_weeks > 0:
-                        delta_weeks = np.full(len(src), np.inf, dtype=np.float32)
-                        for idx, (u_name, v_name) in enumerate(zip(names[src], names[dst])):
-                            key = tuple(sorted((u_name, v_name)))
-                            last = self._last_week_toghether.get(key)
-                            if last is not None:
-                                delta_weeks[idx] = current_week_idx - last
-                        decay_bonus = lambda_temporal * 2^(-delta_weeks / half_life)
-                        finite_mask = np.isfinite(delta_weeks)
-                        if np.any(finite_mask):
-                            w[finite_mask] += decay_bonus[finite_mask]
-                            total_bonus += decay_bonus[finite_mask]
-                            boosted += np.sum(finite_mask)
 
-                    w = np.asarray(G.es["weight"], dtype=np.float32)
-                    w[stable_mask] += bonuses
+                    final_bonus[stable_mask] = bonuses
+
+                if use_decay:
+                    # per il decay dobbiamo calcolare delta_weeks per tutti gli archi
+                    for idx, (u_name, v_name) in enumerate(zip(names[src], names[dst])):
+                        if stable_mask[idx]:
+                            continue
+                        key = tuple(sorted((u_name, v_name)))
+                        if key in self._last_together:
+                            last_week, last_bonus = self._last_together[key]
+                            delta = current_week_idx - last_week
+                            if delta > 0:
+                                decay = 2.0 ** (-delta / memory_decay_half_life_weeks)
+                                final_bonus[idx] = last_bonus * decay
+                    
+                if np.any(final_bonus > 0):
+                    w = np.asarray(G.es["weight"], dtype=np.float32).copy()
+                    w += final_bonus
                     G.es["weight"] = w.tolist()
-
-                    boosted = int(stable_mask.sum())
-                    total_bonus = float(bonuses.sum())
-
+                    boosted = int(np.sum(final_bonus > 0))
+                    total_bonus = float(np.sum(final_bonus))
+            
             if boosted:
                 self.logger.info(f"[{week_str}] boosted_edges={boosted:,}, bonus~{total_bonus:.2f}")
 
@@ -476,18 +485,6 @@ class Leiden:
             # align labels
             if prev_comm_by_name:
                 curr_labels = np.array(self._relabel_with_overlap(prev_comm_by_name, names, curr_labels), dtype=int)
-            if memory_decay_half_life_weeks is not None and memory_decay_half_life_weeks > 0:
-                comm_to_nodes={}
-                for idx, comm in enumerate(curr_labels):
-                    node_name = names[idx]
-                    comm_to_nodes.setdefault(comm, []).append(node_name)
-                for nodes in comm_to_nodes.values():
-                    if len(nodes) > 1:
-                        for i in range(len(nodes)):
-                            for j in range(i+1, len(nodes)):
-                                a, b = nodes[i], nodes[j]
-                                key = tuple(sorted((a, b)))
-                                self._last_week_toghether[key] = current_week_idx
                                 
 
             memberships.append(list(curr_labels))
@@ -512,6 +509,35 @@ class Leiden:
             prev_comm_by_name = new_prev
             tenure_by_name = new_ten
 
+            if use_decay:
+                ten_curr = np.array([new_ten.get(name, 0) for name in names])
+                comm_to_nodes = {}
+                for idx, comm in enumerate(curr_labels):
+                    node_name = names[idx]
+                    comm_to_nodes.setdefault(comm, []).append((node_name, ten_curr[idx]))
+                for nodes in comm_to_nodes.values():
+                    if len(nodes) > 1:
+                        for i in range(len(nodes)):
+                            name_i, ten_i = nodes[i]
+                            for j in range(i+1, len(nodes)):
+                                name_j, ten_j = nodes[j]
+                                key = tuple(sorted((name_i, name_j)))
+                                # Il bonus si basa sulla tenure minima della coppia (come nel tenure bonus)
+                                tau_pair = min(ten_i, ten_j)
+                                cap_value = float(cap_bonus)
+                                if cap_mode == "dynamic" and dynamic_cap_by_week is not None:
+                                    cap_value = float(dynamic_cap_by_week.get(str(week_str), cap_bonus))
+                                bonus_val = self._tenure_bonus(
+                                    tau=np.array([tau_pair]),
+                                    lambda_temporal=lambda_temporal,
+                                    cap_value=cap_value,
+                                    tenure_mode=tenure_mode,
+                                    tenure_exp_k=tenure_exp_k
+                            )[0]
+                            self._last_together[key] = (current_week_idx, bonus_val)
+            
+            current_week_idx += 1
+
             self._print_memory_usage(f"Dopo la slice {week_str}")
 
         return memberships, dates
@@ -535,7 +561,7 @@ class Leiden:
         max_edges,
         output_dir,
         run_tag,
-        memory_decay_half_life_weeks=2.0
+        memory_decay_half_life_weeks=None
     ):
         """
         Esegue la run e salva:
@@ -571,6 +597,7 @@ class Leiden:
             dynamic_cap_by_week=dynamic_cap_by_week,
             tenure_mode=tenure_mode,
             tenure_exp_k=float(tenure_exp_k),
+            memory_decay_half_life_weeks=memory_decay_half_life_weeks,
             debug_sample_nodes=debug_sample_nodes,
             max_edges=max_edges,
             max_slices=max_slices,
@@ -588,6 +615,7 @@ class Leiden:
             "cap_bonus": float(cap_bonus),
             "tenure_mode": tenure_mode,
             "tenure_exp_k": float(tenure_exp_k),
+            "memory_decay_half_life_weeks": memory_decay_half_life_weeks,
             "max_slices": max_slices
         }
 
