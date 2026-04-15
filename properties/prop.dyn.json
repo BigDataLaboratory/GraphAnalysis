@@ -68,6 +68,8 @@
         "tenure_mode": "linear",
         "tenure_exp_k": 0.15,
 
+        "memory_decay_half_life_weeks": null,
+
         "max_slices": 10,
 
         "community_output_file_path": "./output/communities_leiden"

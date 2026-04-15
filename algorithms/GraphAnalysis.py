@@ -55,6 +55,7 @@ class GraphAnalysis:
         - single run (cap_mode + tenure_mode da cfg)
         - experiments (cap_modes × tenure_modes × rp_list)
         """
+
         cfg = self.parameters.community_leiden_prop or {}
 
         # fallback se Main.py non passa ancora community_leiden_exp_prop
@@ -91,6 +92,10 @@ class GraphAnalysis:
 
         tenure_mode = cfg.get("tenure_mode", "linear")  # none/linear/log/exp
         tenure_exp_k = float(cfg.get("tenure_exp_k", 0.15))
+
+        memory_decay_half_life_weeks = cfg.get("memory_decay_half_life_weeks", None)
+        if memory_decay_half_life_weeks is not None:
+            memory_decay_half_life_weeks = float(memory_decay_half_life_weeks)
 
         dynamic_cap_conf = cfg.get("dynamic_cap", {}) or {}
 
@@ -137,7 +142,8 @@ class GraphAnalysis:
                                 debug_sample_nodes=debug_sample_nodes,
                                 max_edges=max_edges,
                                 output_dir=out_dir,
-                                run_tag=run_tag
+                                run_tag=run_tag,
+                                memory_decay_half_life_weeks=memory_decay_half_life_weeks
                             )
 
 
@@ -161,7 +167,8 @@ class GraphAnalysis:
                 debug_sample_nodes=debug_sample_nodes,
                 max_edges=max_edges,
                 output_dir=out_dir,
-                run_tag=run_tag
+                run_tag=run_tag,
+                memory_decay_half_life_weeks=memory_decay_half_life_weeks
             )
 
     def run(self):
