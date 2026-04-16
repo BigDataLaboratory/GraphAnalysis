@@ -123,16 +123,10 @@ class GraphGeneration(MongoConnection):
         is_verified = 1 if d['user'].get('verified', False) else 0
 
         # --- ACCOUNT AGE ---
-        # Se non ho una data fissa, uso quella del tweet corrente (d['created_at'])
-        # come punto di riferimento per l'età dell'account in quel momento.
         user_created_at = d['user'].get('created_at')
-        tweet_date = d.get('created_at')
-        account_age_days = 0
-        if user_created_at and tweet_date:
-            # Calcoliamo la differenza tra quando è stato scritto il tweet 
-            # e quando è nato l'account
-            delta = tweet_date - user_created_at
-            account_age_days = delta.days
+
+        # NON calcoliamo l'age qui
+        account_age_days = None
 
         # PRENDIAMO I LIKE
         current_likes = d['user'].get('favourites_count', 0)
@@ -166,6 +160,7 @@ class GraphGeneration(MongoConnection):
                             'following': current_following,
                             'verified': is_verified,
                             'account_age_days': account_age_days,
+                            'created_at_user': user_created_at,
                             'timestamp': d['created_at'].timestamp(),
                             'hashtags': hashtags_set,
                             'mentions': mentions_set
@@ -410,18 +405,19 @@ class GraphGeneration(MongoConnection):
                 worker_stats = Writer.load_checkpoint_file(file_path)
                 
                 for row in worker_stats:
-                    # row dovrebbe essere: [user_id, total, retweets, reply, original, likes, timestamp]
+    # Indici coerenti con save_stats_checkpoint
                     uid = row[0]
-                    t_tweets = int(row[1])
-                    t_rt = int(row[2])
-                    t_rep = int(row[3])
-                    t_orig = int(row[4])
-                    t_likes = int(row[5])
+                    t_tweets = int(row[1]) if row[1] != "" else 0
+                    t_rt = int(row[2]) if row[2] != "" else 0
+                    t_rep = int(row[3]) if row[3] != "" else 0
+                    t_orig = int(row[4]) if row[4] != "" else 0
+                    t_likes = int(row[5]) if len(row) > 5 and row[5] != "" else 0
                     t_followers = int(row[6]) if len(row) > 6 and row[6] != "" else 0
                     t_following = int(row[7]) if len(row) > 7 and row[7] != "" else 0
                     t_verified = int(row[8]) if len(row) > 8 and row[8] != "" else 0
-                    t_account_age = int(row[9]) if len(row) > 9 and row[9] != "" else 0
-                    t_time = float(row[10]) if len(row) > 10 and row[10] != "" else 0.0
+                    t_time = float(row[9]) if len(row) > 9 and row[9] != "" else 0.0
+
+                    user_created_iso = row[10] if len(row) > 10 else ""
                     hashtags_list = []
                     mentions_list = []
 
@@ -430,12 +426,21 @@ class GraphGeneration(MongoConnection):
                             hashtags_list = json.loads(row[11])
                         except Exception:
                             hashtags_list = []
-                    if len(row) > 12 and row[12]:
-                        try:
-                            mentions_list = json.loads(row[12])
-                        except Exception:
-                            mentions_list = []
+                        if len(row) > 12 and row[12]:
+                            try:
+                                mentions_list = json.loads(row[12])
+                            except Exception:
+                                mentions_list = []
 
+                    # Convert ISO string to datetime safely
+                    user_created_dt = None
+                    if user_created_iso:
+                        try:
+                            user_created_dt = datetime.fromisoformat(user_created_iso)
+                        except Exception:
+                            user_created_dt = None
+
+                    # Populate/merge final_user_metrics
                     if uid not in final_user_metrics:
                         final_user_metrics[uid] = {
                             'total': t_tweets,
@@ -446,36 +451,45 @@ class GraphGeneration(MongoConnection):
                             'followers': t_followers,
                             'following': t_following,
                             'verified': t_verified,
-                            'account_age_days': t_account_age,
                             'timestamp': t_time,
+                            'created_at_user': user_created_dt,
                             'hashtags': set(hashtags_list),
                             'mentions': set(mentions_list)
                         }
                     else:
-                        # Sum counts
                         final_user_metrics[uid]['total'] += t_tweets
                         final_user_metrics[uid]['retweets'] += t_rt
                         final_user_metrics[uid]['reply'] += t_rep
                         final_user_metrics[uid]['original'] += t_orig
 
-                        # Merge hashtag and mention sets
                         final_user_metrics[uid]['hashtags'].update(hashtags_list)
                         final_user_metrics[uid]['mentions'].update(mentions_list)
 
-                        # Update likes/followers/following/verified/account_age if this record is more recent
                         if t_time > final_user_metrics[uid]['timestamp']:
                             final_user_metrics[uid]['likes'] = t_likes
                             final_user_metrics[uid]['followers'] = t_followers
                             final_user_metrics[uid]['following'] = t_following
                             final_user_metrics[uid]['verified'] = t_verified
-                            final_user_metrics[uid]['account_age_days'] = t_account_age
                             final_user_metrics[uid]['timestamp'] = t_time
+                            if user_created_dt:
+                                final_user_metrics[uid]['created_at_user'] = user_created_dt
 
             # Transform into list for CSV with requested fields:
             # uid, total, retweets, reply, original, likes (latest), followers (latest), following (latest),
             # verified (latest), account_age_days (latest), unique_hashtags_count, unique_mentions_count
             final_stats_list = []
             for uid, data in final_user_metrics.items():
+                user_created = data.get('created_at_user', None)
+                latest_ts = data.get('timestamp', 0)
+
+                if user_created and latest_ts:
+                    try:
+                        account_age_days = int((datetime.fromtimestamp(latest_ts) - user_created).days)
+                    except Exception:
+                        account_age_days = 0
+                else:
+                    account_age_days = 0
+
                 final_stats_list.append((
                     uid,
                     data['total'],
@@ -486,10 +500,11 @@ class GraphGeneration(MongoConnection):
                     data.get('followers', 0),
                     data.get('following', 0),
                     data.get('verified', 0),
-                    data.get('account_age_days', 0),
+                    account_age_days,
                     len(data.get('hashtags', set())),
                     len(data.get('mentions', set()))
                 ))
+
 
             stats_output_path = os.sep.join([self.output_file_path, self.id, "final_user_stats"])
             Writer.write_on_csv(stats_output_path, final_stats_list)
@@ -543,8 +558,11 @@ class GraphGeneration(MongoConnection):
             rows = []
             for uid, s in intermediate_stats.items():
                 # Serializziamo i set in JSON per evitare eval()
-                h_json = json.dumps(list(s['hashtags']))
-                m_json = json.dumps(list(s['mentions']))
+                created_at_user = s.get('created_at_user', None)
+                created_iso = created_at_user.isoformat() if isinstance(created_at_user, datetime) else ""
+
+                h_json = json.dumps(list(s.get('hashtags', [])))
+                m_json = json.dumps(list(s.get('mentions', [])))
             
                 # Scriviamo tutti i campi richiesti
                 # Usiamo il tabulatore \t per evitare problemi con virgole nei testi
@@ -558,8 +576,8 @@ class GraphGeneration(MongoConnection):
                     str(s.get('followers', 0)),
                     str(s.get('following', 0)),
                     str(s.get('verified', 0)),
-                    str(s.get('account_age_days', 0)),
                     str(s.get('timestamp', 0)),
+                    created_iso,
                     h_json, # Hashtag serializzati
                     m_json  # Menzioni serializzate
                 ]
@@ -749,6 +767,7 @@ class GraphGeneration(MongoConnection):
                             intermediate_stats[uid]['following'] = s['following']
                             intermediate_stats[uid]['verified'] = s['verified']
                             intermediate_stats[uid]['account_age_days'] = s['account_age_days']
+                            intermediate_stats[uid]['created_at_user'] = s['created_at_user']
                             intermediate_stats[uid]['timestamp'] = s['timestamp']
 
                 for item in edges:
