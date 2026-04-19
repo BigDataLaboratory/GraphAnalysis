@@ -96,6 +96,10 @@ class GraphAnalysis:
         memory_decay_half_life_weeks = cfg.get("memory_decay_half_life_weeks", None)
         if memory_decay_half_life_weeks is not None:
             memory_decay_half_life_weeks = float(memory_decay_half_life_weeks)
+        
+        memory_decay_threshold = cfg.get("memory_decay_threshold", None)
+        if memory_decay_threshold is not None:
+            memory_decay_threshold = float(memory_decay_threshold)
 
         dynamic_cap_conf = cfg.get("dynamic_cap", {}) or {}
 
@@ -143,7 +147,8 @@ class GraphAnalysis:
                                 max_edges=max_edges,
                                 output_dir=out_dir,
                                 run_tag=run_tag,
-                                memory_decay_half_life_weeks=memory_decay_half_life_weeks
+                                memory_decay_half_life_weeks=memory_decay_half_life_weeks,
+                                memory_decay_threshold=memory_decay_threshold
                             )
 
 
@@ -168,7 +173,8 @@ class GraphAnalysis:
                 max_edges=max_edges,
                 output_dir=out_dir,
                 run_tag=run_tag,
-                memory_decay_half_life_weeks=memory_decay_half_life_weeks
+                memory_decay_half_life_weeks=memory_decay_half_life_weeks,
+                memory_decay_threshold=memory_decay_threshold
             )
 
     def run(self):

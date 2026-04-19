@@ -302,6 +302,7 @@ class Leiden:
         tenure_mode="linear",              # none/linear/log/exp
         tenure_exp_k=0.15,
         memory_decay_half_life_weeks=None,
+        memory_decay_threshold=None,
         debug_sample_nodes=None,
         max_edges=None,
         max_slices=None,
@@ -443,6 +444,7 @@ class Leiden:
                     final_bonus[stable_mask] = bonuses
 
                 if use_decay:
+                    threshold = memory_decay_threshold if memory_decay_threshold is not None else 0.0
                     # per il decay dobbiamo calcolare delta_weeks per tutti gli archi
                     for idx, (u_name, v_name) in enumerate(zip(names[src], names[dst])):
                         if stable_mask[idx]:
@@ -453,7 +455,10 @@ class Leiden:
                             delta = current_week_idx - last_week
                             if delta > 0:
                                 decay = 2.0 ** (-delta / memory_decay_half_life_weeks)
-                                final_bonus[idx] = last_bonus * decay
+                                bonus_val = last_bonus * decay
+                                if threshold > 0 and bonus_val < threshold:
+                                    bonus_val = 0.0
+                                final_bonus[idx] = bonus_val
                     
                 if np.any(final_bonus > 0):
                     w = np.asarray(G.es["weight"], dtype=np.float32).copy()
@@ -533,8 +538,8 @@ class Leiden:
                                     cap_value=cap_value,
                                     tenure_mode=tenure_mode,
                                     tenure_exp_k=tenure_exp_k
-                            )[0]
-                            self._last_together[key] = (current_week_idx, bonus_val)
+                                )[0]
+                                self._last_together[key] = (current_week_idx, bonus_val)
             
             current_week_idx += 1
 
@@ -561,7 +566,8 @@ class Leiden:
         max_edges,
         output_dir,
         run_tag,
-        memory_decay_half_life_weeks=None
+        memory_decay_half_life_weeks=None,
+        memory_decay_threshold=None
     ):
         """
         Esegue la run e salva:
@@ -598,6 +604,7 @@ class Leiden:
             tenure_mode=tenure_mode,
             tenure_exp_k=float(tenure_exp_k),
             memory_decay_half_life_weeks=memory_decay_half_life_weeks,
+            memory_decay_threshold=memory_decay_threshold,
             debug_sample_nodes=debug_sample_nodes,
             max_edges=max_edges,
             max_slices=max_slices,
