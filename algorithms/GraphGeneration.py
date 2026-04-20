@@ -345,10 +345,10 @@ class GraphGeneration(MongoConnection):
                     else:
                         for row in checkpoint_data:
                             key = (int(row[0]), int(row[1]), int(row[2]), float(row[3]))
-                            aggregated_results[key] = eval(row[5])
+                            aggregated_results[key] = (float(row[4]), float(row[5]))
                 final_result_graph = []
                 for k, v in aggregated_results.items():
-                    if k[0] != 1:
+                    if graph_type.value != 1:
                         final_result_graph.append((k[0], k[1], k[2], k[3], v))
                     else:
                         final_result_graph.append((k[0], k[1], k[2], k[3], v[0], v[1]))
@@ -366,11 +366,11 @@ class GraphGeneration(MongoConnection):
                     else:
                         for row in checkpoint_data:
                             key = (int(row[0]), int(row[1]), int(row[2]))
-                            aggregated_results[key] = eval(row[4])
+                            aggregated_results[key] = (float(row[3]), float(row[4]))
 
                 final_result_graph = []
                 for k, v in aggregated_results.items():
-                    if k[0] != 1:
+                    if graph_type.value != 1:
                         final_result_graph.append((k[0], k[1], k[2], v))
                     else:
                         final_result_graph.append((k[0], k[1], k[2], v[0], v[1]))
@@ -794,9 +794,8 @@ class GraphGeneration(MongoConnection):
                 self.save_checkpoint(intermediate_result, intermediate_map, process_id)
             if intermediate_stats:
                 self.save_stats_checkpoint(intermediate_stats, process_id)
-        
+
         self.logger.info(f"[Worker {process_id}] Final checkpoint saved")
-        client.close()
         return f"[Worker {process_id}] Done."
 
     def query_data_in_chunks(self, where, project, method="full", batch_size=100000, checkpoint_interval=10000):
