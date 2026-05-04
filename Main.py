@@ -48,7 +48,6 @@ if __name__ == '__main__':
     setup_memory_logging(prop["log"]["filepath"])
 
     # Extract properties for graph analysis
-    delete_tmp_after_merge = prop["graph_generation"]["delete_tmp_after_merge"]
     do_graph_generation = prop["graph_generation"]["to_execute"]
     do_community_detection_leiden = prop["community_detection"]["leiden"]["to_execute"]
     do_community_detection_combo = prop["community_detection"]["combo"]["to_execute"]
@@ -58,7 +57,6 @@ if __name__ == '__main__':
 
     config = prop["graph_generation"]["parameters"]["input"]["conf"]
     source_input_type = prop["graph_generation"]["parameters"]["input"]["type"]
-    checkpoint_every = prop["graph_generation"]["parameters"].get("checkpoint_every", 5000)
     source_uri = config["uri"]
     source_username = config["username"]
     source_password = config["password"]
@@ -76,7 +74,6 @@ if __name__ == '__main__':
     do_hashtag_cooccurrences_graph = prop["graph_generation"]["parameters"]["graph_type"]["hashtag_cooccurrences"]
     do_mention_graph = prop["graph_generation"]["parameters"]["graph_type"]["mention"]
     do_response_graph = prop["graph_generation"]["parameters"]["graph_type"]["response"]
-    do_user_user_graph = prop["graph_generation"]["parameters"]["graph_type"].get("user_user", False)
 
     output_graph_path = prop["graph_generation"]["parameters"]["output"]["path"]
     output_retweet_graph_path = prop["graph_generation"]["parameters"]["output"]["graph_file_name"]["retweet"]
@@ -88,7 +85,6 @@ if __name__ == '__main__':
     output_multi_graph_path = prop["graph_generation"]["parameters"]["output"]["graph_file_name"]["multigraph"]
     output_map_prefix = prop["graph_generation"]["parameters"]["output"]["map_file_name_prefix"]
 
-    # Community detection parameters
     community_config = prop["community_detection"]["parameters"]
     do_read_graph_from_file = community_config["read_from_file"]
     do_read_from_edge_list = community_config["read_from_edge_list"]
@@ -99,7 +95,6 @@ if __name__ == '__main__':
     community_leiden_prop = prop["community_detection"]["leiden"]["parameters"]
     community_hierarchical_prop = prop["community_detection"]["hierarchical"]["parameters"]
 
-    # Get text parameters
     users_text_config = prop["get_users_text"]["parameters"]
     community_indexes = users_text_config["communities"]["indexes"]
     community_col_name = users_text_config["communities"]["community_col_name"]
@@ -121,7 +116,6 @@ if __name__ == '__main__':
     td_db_name = text_data_config["db_name"]
     td_collection = text_data_config["collection"]
 
-    # Topic builder parameters
     topic_config = prop["topic_builder"]["parameters"]
     topics_file_path = topic_config["topics_file_path"]
     docs_file_path = topic_config["docs_file_path"]
@@ -129,16 +123,12 @@ if __name__ == '__main__':
     model_serialization = topic_config["model"]["serialization"]
 
     Parameters = namedtuple('Parameters', [
-        # General
-        "delete_tmp_after_merge",
-        # Graph generation parameters
         "do_graph_generation",
         "do_community_detection_leiden",
         "do_community_detection_combo",
         "do_community_hierarchical",
         "do_get_text",
         "do_topic_builder",
-        "checkpoint_every",
         "source_input_type",
         "source_uri",
         "source_username",
@@ -156,7 +146,6 @@ if __name__ == '__main__':
         "do_hashtag_cooccurrences_graph",
         "do_mention_graph",
         "do_response_graph",
-        "do_user_user_graph",
         "output_graph_path",
         "output_retweet_graph_path",
         "output_response_graph_path",
@@ -165,7 +154,6 @@ if __name__ == '__main__':
         "output_hashtag_cooccurrences_graph_path",
         "output_multi_graph_path",
         "output_map_prefix",
-        # Community detection parameters
         "do_read_graph_from_file",
         "do_read_from_edge_list",
         "graph_file_path",
@@ -174,7 +162,6 @@ if __name__ == '__main__':
         "community_combo_prop",
         "community_leiden_prop",
         "community_hierarchical_prop",
-        # Get text parameters
         "community_indexes",
         "community_col_name",
         "do_read_communities_from_file",
@@ -191,22 +178,18 @@ if __name__ == '__main__':
         "td_auth_mechanism",
         "td_db_name",
         "td_collection",
-        # Topic builder parameters
         "topics_file_path",
         "docs_file_path",
         "model_path",
         "model_serialization"
     ])
 
-    P = Parameters(delete_tmp_after_merge,
-                   do_graph_generation,
+    P = Parameters(do_graph_generation,
                    do_community_detection_leiden,
                    do_community_detection_combo,
                    do_community_hierarchical,
                    do_get_text,
                    do_topic_builder,
-                   # Graph generation parameters
-                   checkpoint_every,
                    source_input_type,
                    source_uri,
                    source_username,
@@ -224,7 +207,6 @@ if __name__ == '__main__':
                    do_hashtag_cooccurrences_graph,
                    do_mention_graph,
                    do_response_graph,
-                   do_user_user_graph,
                    output_graph_path,
                    output_retweet_graph_path,
                    output_response_graph_path,
@@ -233,7 +215,6 @@ if __name__ == '__main__':
                    output_hashtag_cooccurrences_graph_path,
                    output_multi_graph_path,
                    output_map_prefix,
-                   # Community detection parameters
                    do_read_graph_from_file,
                    do_read_from_edge_list,
                    graph_file_path,
@@ -242,7 +223,6 @@ if __name__ == '__main__':
                    community_combo_prop,
                    community_leiden_prop,
                    community_hierarchical_prop,
-                   # Get text parameters
                    community_indexes,
                    community_col_name,
                    do_read_communities_from_file,
@@ -259,7 +239,6 @@ if __name__ == '__main__':
                    td_auth_mechanism,
                    td_db_name,
                    td_collection,
-                   # Topic builder parameters
                    topics_file_path,
                    docs_file_path,
                    model_path,
