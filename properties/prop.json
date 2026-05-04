@@ -5,13 +5,15 @@
   },
   "graph_generation": {
     "to_execute": true,
+    "delete_tmp_after_merge": false,
     "parameters": {
+      "checkpoint_every": 2000,
       "input": {
         "type": "json",
         "conf": {
           "uri": "mongodb://localhost:27017/",
           "db_name": "twitter",
-          "collection": "my_collection",
+          "collection": "QCPS_2",
           "chunk_start_date": "23/02/2022",
           "chunk_end_date": "16/01/2023",
           "method": "day",
@@ -22,12 +24,13 @@
         }
       },
       "graph_type": {
-        "retweet": true,
-        "tweet_retweet": true,
-        "user_hashtag": true,
-        "response": true,
-        "mention": true,
-        "hashtag_cooccurrences": true
+        "tweet_retweet": false,
+        "user_hashtag": false,
+        "hashtag_cooccurrences": false,
+        "retweet": false,
+        "response": false,
+        "mention": false,
+        "user_user": true
       },
       "output": {
         "path": "./resources/",

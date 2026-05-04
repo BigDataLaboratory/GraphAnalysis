@@ -7,8 +7,10 @@ from collections import namedtuple
 from Utils.Writer import Writer
 from algorithms.CommunityText import CommunityText
 from algorithms.GraphGeneration import GraphGeneration
+from algorithms.GraphGenerationUser import GraphGenerationUser
 from community.Combo import Combo
 from community.Leiden import Leiden
+from algorithms import mongoQueries
 
 
 class GraphAnalysis:
@@ -19,61 +21,62 @@ class GraphAnalysis:
 
     def run(self):
         if self.parameters.do_graph_generation:
-            gg = GraphGeneration(uri=self.parameters.source_uri,
-                                 username=self.parameters.source_username,
-                                 password=self.parameters.source_password,
-                                 auth_source=self.parameters.source_auth_source,
-                                 auth_mechanism=self.parameters.source_auth_mechanism,
-                                 database_name=self.parameters.source_db_name,
-                                 collection=self.parameters.source_collection,
-                                 start_date=self.parameters.source_chunk_start_date,
-                                 end_date=self.parameters.source_chunk_end_date,
-                                 method=self.parameters.source_method,
-                                 input_type=self.parameters.source_input_type,
-                                 output_file_path=self.parameters.output_graph_path,
-                                 retweet=self.parameters.do_retweet_graph,
-                                 tweet_retweet=self.parameters.do_tweet_retweet_graph,
-                                 user_hashtag=self.parameters.do_hashtag_graph,
-                                 hashtag_cooccurrences=self.parameters.do_hashtag_cooccurrences_graph,
-                                 response=self.parameters.do_response_graph,
-                                 mention=self.parameters.do_mention_graph)
+            p = self.parameters
+            is_user_oriented_graph = p.do_retweet_graph or p.do_response_graph or p.do_mention_graph
 
-            """
-            use it when mongo is available again
-            """
-            w = {'$or': [{'hashtagEntities': {'$exists': True}}, {'retweeted_status': {'$exists': True}},
-                         {'in_reply_to_status_id': {'$exists': True}}]}
-            s = {'_id': 0,
-                 'id': 1,
-                 'in_reply_to_status_id': 1,
-                 'in_reply_to_user_id': 1,
-                 'retweeted_status.created_at': 1,
-                 'retweeted_status.id': 1,
-                 'retweeted_status.user.id': 1,
-                 'retweeted_status.user.screen_name': 1,
-                 'user.id': 1,
-                 'user.screen_name': 1,
-                 'hashtagEntities': 1,
-                 'created_at': 1,
-                 'userMentionEntities': 1}
+            if is_user_oriented_graph:
+                pass
 
-            """
-            w = 'hashtagEntities.notnull() | `retweeted_status.id`.notnull() | in_reply_to_status_id.notnull()'
-            s = ['id',
-                 'in_reply_to_status_id',
-                 'in_reply_to_user_id',
-                 'retweeted_status.created_at.$date',
-                 'retweeted_status.id',
-                 'retweeted_status.user.id',
-                 'retweeted_status.user.screen_name',
-                 'user.id',
-                 'user.screen_name',
-                 'hashtagEntities',
-                 'created_at.$date',
-                 'userMentionEntities'
-                 ]
-            """
-            gg.query_data_in_chunks(w, s, method=self.parameters.source_method)
+            # user-user graph with node features and typed edges
+            if self.parameters.do_user_user_graph:
+                # get the new parameter, defaulting to False if not present
+                delete_tmp = getattr(self.parameters, "delete_tmp_after_merge", False)
+                ggu = GraphGenerationUser(
+                    uri=self.parameters.source_uri,
+                    username=self.parameters.source_username,
+                    password=self.parameters.source_password,
+                    auth_source=self.parameters.source_auth_source,
+                    auth_mechanism=self.parameters.source_auth_mechanism,
+                    database_name=self.parameters.source_db_name,
+                    collection=self.parameters.source_collection,
+                    output_file_path=self.parameters.output_graph_path,
+                    delete_tmp_after_merge=delete_tmp
+                )
+                ggu.run(checkpoint_every=self.parameters.checkpoint_every)
+
+            # temporal edge extraction — only if at least one graph type is enabled
+            needs_graph_generation = any([
+                p.do_retweet_graph,
+                p.do_tweet_retweet_graph,
+                p.do_hashtag_graph,
+                p.do_hashtag_cooccurrences_graph,
+                p.do_response_graph,
+                p.do_mention_graph,
+            ])
+
+            if needs_graph_generation:
+                gg = GraphGeneration(uri=self.parameters.source_uri,
+                                    username=self.parameters.source_username,
+                                    password=self.parameters.source_password,
+                                    auth_source=self.parameters.source_auth_source,
+                                    auth_mechanism=self.parameters.source_auth_mechanism,
+                                    database_name=self.parameters.source_db_name,
+                                    collection=self.parameters.source_collection,
+                                    start_date=self.parameters.source_chunk_start_date,
+                                    end_date=self.parameters.source_chunk_end_date,
+                                    method=self.parameters.source_method,
+                                    input_type=self.parameters.source_input_type,
+                                    output_file_path=self.parameters.output_graph_path,
+                                    retweet=self.parameters.do_retweet_graph,
+                                    tweet_retweet=self.parameters.do_tweet_retweet_graph,
+                                    user_hashtag=self.parameters.do_hashtag_graph,
+                                    hashtag_cooccurrences=self.parameters.do_hashtag_cooccurrences_graph,
+                                    response=self.parameters.do_response_graph,
+                                    mention=self.parameters.do_mention_graph)
+                w, s = mongoQueries.extract_tweets_if_contains_hashtags_or_is_retweet_or_reply()
+                gg.query_data_in_chunks(w, s, method=self.parameters.source_method)
+            else:
+                self.logger.info("Skipping GraphGeneration: no graph type enabled.")
 
         # Community detection
         community_detection = self.parameters.do_community_detection_combo or self.parameters.do_community_detection_leiden or self.parameters.do_community_hierarchical
