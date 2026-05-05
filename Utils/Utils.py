@@ -38,6 +38,20 @@ class Utils:
             n //= 62
         return ''.join(reversed(chars)) if chars else '0'
 
+    @staticmethod
+    def from_node_id(base62_str):
+        """
+        Convert a compact base-62 node identifier back to an integer hash.
+
+        :param base62_str: Base-62 string (from Utils.to_node_id).
+        :return: Integer hash value.
+        """
+        if str(base62_str) == '0':
+            return 0
+        n = 0
+        for char in str(base62_str):
+            n = n * 62 + Utils._B62.index(char)
+        return n
 
     @staticmethod
     def compute_hash(x):
