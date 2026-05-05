@@ -48,7 +48,7 @@ class Writer:
         :raises Exception: For any other exceptions that may occur during the file writing process.
 
         """
-        with open(file_path, 'a', newline='') as f:
+        with open(file_path, 'a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerows(rows)
 
@@ -101,7 +101,7 @@ class Writer:
         :param file_path: Path to the checkpoint file.
         :return: List of rows from the CSV file.
         """
-        with open(file_path, mode='r', newline='', encoding='utf-8') as f:
+        with open(file_path, mode='r', newline='', encoding='utf-8', errors='replace') as f:
             reader = csv.reader(f)
             return [list(row) for row in reader]
 

@@ -33,11 +33,13 @@ class MongoConnection:
         :return: MongoClient instance connected to the specified database.
         """
         if self.db is None and self.database_name is not None:
-            mongo_client = MongoClient(self.uri,
-                                       username=self.username,
-                                       password=self.password,
-                                       authSource=self.auth_source,
-                                       authMechanism=self.auth_mechanism)
+            kwargs = {}
+            if self.username: kwargs['username'] = self.username
+            if self.password: kwargs['password'] = self.password
+            if self.auth_source: kwargs['authSource'] = self.auth_source
+            if self.auth_mechanism: kwargs['authMechanism'] = self.auth_mechanism
+            mongo_client = MongoClient(self.uri, **kwargs)
+            
             try:
                 self.db = mongo_client[self.database_name]
             except pymongo.errors.ConnectionFailure as e:
@@ -45,7 +47,16 @@ class MongoConnection:
                 raise pymongo.errors.ConnectionFailure(f"Failed to connect to MongoDB: {e}")
             except pymongo.errors.OperationFailure as e:
                 self.logger.error(f"Operation failed: {e}")
-                raise pymongo.errors.OperationFailure(f"Operation failed: {e}")
+                raise pymongo.errors.OperationFailure(f"Operation failed: {e}") 
+        elif self.db is not None:
+            mongo_client = self.db.client
+        else:
+            mongo_client = MongoClient(self.uri,
+                                       username=self.username,
+                                       password=self.password,
+                                       authSource=self.auth_source,
+                                       authMechanism=self.auth_mechanism)
+            
         return mongo_client
 
     def get_collection(self):

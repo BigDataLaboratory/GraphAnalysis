@@ -1,0 +1,122 @@
+{
+  "log": {
+    "filepath": "./logs/log.txt",
+    "level": "INFO"
+  },
+  "graph_generation": {
+    "to_execute": true,
+    "parameters": {
+      "input": {
+        "type": "mongo",
+        "conf": {
+          "uri": "mongodb://localhost:27017/twitter",
+          "username": "twitter",
+          "password": "twitter",
+          "authName": "twitter",
+          "authMechanism": "SCRAM-SHA-1",
+          "db_name": "twitter",
+          "collection": "my_collection",
+          "chunk_start_date": "22/02/2022",
+          "chunk_end_date": "31/10/2022",
+          "method": "week"
+        }
+      },
+      "graph_type": {
+        "retweet": true,
+        "tweet_retweet": false,
+        "user_hashtag": true,
+        "response": true,
+        "mention": false,
+        "hashtag_cooccurrences": true
+      },
+      "output": {
+        "path": "./output/graphs",
+        "graph_file_name": {
+          "retweet": "retweet",
+          "mention": "mention",
+          "retweet_user": "retweet_user",
+          "response": "response",
+          "response_user": "response_user",
+          "hashtag": "hashtag",
+          "hashtag_cooccurrences": "hashtag_cooccurrences",
+          "multigraph": "multigraph"
+        },
+        "map_file_name_prefix": "map"
+      }
+    }
+  },
+  "community_detection": {
+    "parameters": {
+      "read_from_edge_list": false,
+      "read_from_file": true,
+      "temporal": true,
+      "graph_file_path": [
+        "/ipazianas/pasquini/output_graph_analysis/feb-oct_week_2022/6500962c9d1611f0948408f1eaf4fe18/retweet"
+      ],
+      "pickle_graph_file_path": "./output/pickle_graph"
+    },
+    "leiden": {
+      "to_execute": true,
+      "parameters": {
+        "community_output_file_path": "./output/communities"
+      }
+    },
+    "combo": {
+      "to_execute": false,
+      "parameters": {
+        "community_output_file_path": "./output/communities_combo"
+      }
+    },
+    "hierarchical": {
+      "to_execute": false,
+      "parameters": {
+        "first_level_communities_file": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/6273205e640511f08e0b08f1eaf4fe18/nodes_with_communities.csv",
+        "community_col_name": "0.6",
+        "community_output_file_path": "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/6273205e640511f08e0b08f1eaf4fe18/hierarchical",
+        "top_k": 500,
+        "collapse_nodes": true,
+        "min_size": 30
+      }
+    }
+  },
+  "get_users_text": {
+    "to_execute": false,
+    "parameters": {
+      "communities": {
+        "indexes": [],
+        "community_col_name": "0.6",
+        "read_communities_from_file": true,
+        "community_file_path": "/ipazianas/pasquini/output_graph_analysis/communities/f51aba14a75b11efa55808f1eaf4fe18/communities_rp_0.6.csv"
+      },
+      "map_file_path": {
+        "read_maps_from_file": true,
+        "user_map": "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/user_id",
+        "hashtag_map": "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/hashtag",
+        "retweet_user_map": "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/user_retweeted_id"
+      },
+      "input": {
+        "type": "mongo",
+        "conf": {
+          "uri": "mongodb://127.0.0.1:27019/",
+          "username": "twitter",
+          "password": "twitter",
+          "authName": "twitter",
+          "authMechanism": "SCRAM-SHA-1",
+          "db_name": "twitter",
+          "collection": "QCPS_2"
+        }
+      }
+    }
+  },
+  "topic_builder": {
+    "to_execute": false,
+    "parameters": {
+      "topics_file_path": "/ipazianas/pasquini/output_graph_analysis/topics_info",
+      "docs_file_path": "/ipazianas/pasquini/output_graph_analysis/docs_info",
+      "model": {
+        "model_path": "/ipazianas/pasquini/output_graph_analysis/topic_model",
+        "serialization": "pickle"
+      }
+    }
+  }
+}
