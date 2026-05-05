@@ -256,13 +256,12 @@ class GraphGenerationUser(MongoConnection):
         latest_user = latest_tweet['user']
         user_created_at = parser.parse(latest_user.get('created_at'))
 
-        # Account age: days between account creation and last observed tweet
-        account_age_days = 0
-        if user_created_at:
-            account_age_days = (latest_tweet['created_at'] - user_created_at).days
+        # Account date: timestamp of account creation
+        TWITTER_EPOCH = datetime(2006, 3, 21, tzinfo=timezone.utc).timestamp()
+        # Instead of keeping the full timestamp (wasting space for unused dates), we start counting the account age from the TWITTER_EPOCH (March 21, 2006).
+        account_date = round(user_created_at.timestamp() - TWITTER_EPOCH) if user_created_at else 0
 
         first_tweet_ts = min(timestamps) if timestamps else 0.0
-        last_tweet_ts = max(timestamps) if timestamps else 0.0
 
         activation_age_days = 0
         if user_created_at and first_tweet_ts:
@@ -314,7 +313,7 @@ class GraphGenerationUser(MongoConnection):
             'followers':         log1p(latest_user.get('followers_count', 0)),
             'following':         log1p(latest_user.get('friends_count', 0)),
             'verified':          1 if latest_user.get('verified', False) else 0,
-            'account_age_days':  account_age_days,
+            'account_date':      account_date,
             
             # --- Network/Content Features ---
             'n_unique_hashtags': len(hashtags),
@@ -383,7 +382,7 @@ class GraphGenerationUser(MongoConnection):
             [
                 f['user_node_id'], f['total'], f['retweets'], f['replies'],
                 f['original'], f['likes'], f['followers'], f['following'],
-                f['verified'], f['account_age_days'],
+                f['verified'], f['account_date'],
                 f['n_unique_hashtags'], f['n_unique_mentions'],
                 f['activation_age_days'], f['tweet_regularity_score'], 
                 f['regularity_reliable'], f['tweet_avg_interval_seconds'], 
