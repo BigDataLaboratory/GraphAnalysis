@@ -4,10 +4,10 @@
     "level": "INFO"
   },
   "graph_generation": {
-    "to_execute": false,
-    "delete_tmp_after_merge": false,
+    "to_execute": true,
+    "delete_tmp_after_merge": true,
     "parameters": {
-      "checkpoint_every": 1,
+      "checkpoint_every": 2000,
       "input": {
         "type": "json",
         "conf": {
@@ -49,7 +49,7 @@
     }
   },
   "gnn_training": {
-    "to_execute": true,
+    "to_execute": false,
     "data": {
       "data_dir": "resources/4e06a07847b411f18cf79c29764a0d18",
       "graph_type": {

@@ -1,10 +1,13 @@
 import itertools
 import logging
+import math
 import os
 import uuid
-from collections import defaultdict
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from pymongo import ASCENDING
 
+import numpy as np
 import sys
 import shutil
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -12,6 +15,105 @@ from Utils.Utils import Utils
 from Utils.Writer import Writer
 from algorithms.MongoConnection import MongoConnection
 import algorithms.mongoQueries as mongoQueries
+
+
+def tweet_regularity_score_from_timestamps(timestamps):
+    """
+    Computes the regularity of posting intervals using the coefficient of variation (CV)
+    of Inter-Tweet Intervals (ITI = time between consecutive tweets, in seconds).
+
+    CV = std(ITI) / mean(ITI). A perfectly regular poster (bot) has CV ≈ 0 → score ≈ 1.
+    A chaotic poster has high CV → score near 0.
+
+    Requires at least 2 timestamps. O(N log N) due to sort.
+    """
+    if len(timestamps) < 2:
+        return {'regularity_score': 0.0, 'iti_std': 0.0, 'iti_mean': 0.0, 'n_intervals': 0}
+
+    sorted_ts = np.sort(np.array(timestamps, dtype=float))
+    intervals = np.diff(sorted_ts)
+
+    iti_mean = float(intervals.mean())
+    iti_std = float(intervals.std(ddof=0))
+    cv = iti_std / iti_mean if iti_mean > 0 else float('inf')
+    regularity_score = 1.0 / (1.0 + cv)
+
+    return {
+        'regularity_score': float(regularity_score),
+        'iti_std': iti_std,
+        'iti_mean': iti_mean,
+        'n_intervals': len(intervals),
+    }
+
+
+def daily_posting_consistency(timestamps, window_days=90, min_days=7, cv_clip=5.0):
+    """
+    Measures consistency of day-over-day posting volume within a trailing window.
+
+    Uses the CV of log-transformed daily tweet counts. Lower CV = more consistent
+    daily volume. Combined with activity_ratio (fraction of days with any activity)
+    into a single score in [0, 1].
+    """
+    if not timestamps:
+        return {'daily_score': 0.0, 'daily_cv_log': None, 'median_daily_count': 0, 'n_days': 0}
+
+    ts = np.sort(np.array(timestamps, dtype=float))
+    start = int(ts[-1]) - int(window_days) * 86400
+
+    days = [datetime.fromtimestamp(t, tz=timezone.utc).date() for t in ts if t >= start]
+    if not days:
+        return {'daily_score': 0.0, 'daily_cv_log': None, 'median_daily_count': 0, 'n_days': 0}
+
+    day_counts = Counter(days)
+    unique_days = sorted(set(days))
+    n_days = len(unique_days)
+    counts = [day_counts[d] for d in unique_days]
+
+    if n_days < min_days:
+        median_daily = float(np.median(counts)) if counts else 0.0
+        return {'daily_score': 0.0, 'daily_cv_log': None, 'median_daily_count': median_daily, 'n_days': n_days}
+
+    counts_arr = np.array(counts, dtype=float)
+    log_counts = np.log1p(counts_arr)
+    mean_log = float(log_counts.mean())
+    std_log = float(log_counts.std(ddof=0))
+    daily_cv_log = std_log / mean_log if mean_log > 0 else float('inf')
+
+    score_from_cv = max(0.0, 1.0 - min(daily_cv_log, cv_clip) / cv_clip)
+    activity_bonus = min(1.0, (n_days / float(window_days)) * 2.0)
+    daily_score = float(max(0.0, min(1.0, 0.75 * score_from_cv + 0.25 * activity_bonus)))
+
+    return {
+        'daily_score': daily_score,
+        'daily_cv_log': None if not np.isfinite(daily_cv_log) else float(daily_cv_log),
+        'median_daily_count': float(np.median(counts_arr)),
+        'n_days': n_days,
+    }
+
+
+def hourly_entropy_from_timestamps(timestamps, window_days=90):
+    """
+    Measures the spread of posting activity across the 24-hour cycle using
+    Shannon entropy, normalized to [0, 1] by dividing by log2(24).
+
+    H = 1 → perfectly uniform (one tweet per hour, human-like).
+    H = 0 → all tweets at the same hour (bot-like, no sleep pattern).
+    """
+    if not timestamps:
+        return 0.0
+
+    ts = np.array(timestamps, dtype=float)
+    start = float(ts.max()) - int(window_days) * 86400
+    hours = [datetime.fromtimestamp(t, tz=timezone.utc).hour for t in ts if t >= start]
+
+    if len(hours) < 2:
+        return 0.0
+
+    hour_counts = Counter(hours)
+    total_h = len(hours)
+    probs = [c / total_h for c in hour_counts.values()]
+    raw_entropy = -sum(p * math.log2(p) for p in probs if p > 0)
+    return raw_entropy / math.log2(24)
 
 
 class GraphGenerationUser(MongoConnection):
@@ -84,6 +186,7 @@ class GraphGenerationUser(MongoConnection):
         n_original = 0
         latest_tweet = None
         hashtags = set()
+        timestamps = []
 
         retweet_targets = defaultdict(int)   # dst_user_id (int) → interaction count
         reply_targets = defaultdict(int)     # dst_user_id (int) → interaction count
@@ -91,13 +194,20 @@ class GraphGenerationUser(MongoConnection):
 
         seen_tweet_ids = set()
 
+        from dateutil import parser  # Import to parse ISO dates
+
         for tweet in tweets:
             tweet_id = tweet.get('id')
             if tweet_id in seen_tweet_ids:
                 continue
             seen_tweet_ids.add(tweet_id)
 
+            # Ensure created_at is a datetime object
+            if isinstance(tweet['created_at'], str):
+                tweet['created_at'] = parser.parse(tweet['created_at'])
+
             n_total += 1
+            timestamps.append(tweet['created_at'].timestamp())
             is_retweet = tweet.get('retweeted_status') is not None
             # In the dataset, -1 indicates the absence of a reply.
             is_reply = tweet.get('in_reply_to_status_id') not in (None, -1)
@@ -144,15 +254,34 @@ class GraphGenerationUser(MongoConnection):
         src_hash = int(user_id)                 # int — used internally as dict key
         src_node_id = Utils.to_node_id(src_hash) # hex str — used only for CSV output
         latest_user = latest_tweet['user']
-        user_created_at = latest_user.get('created_at')
+        user_created_at = parser.parse(latest_user.get('created_at'))
 
         # Account age: days between account creation and last observed tweet
         account_age_days = 0
         if user_created_at:
+            account_age_days = (latest_tweet['created_at'] - user_created_at).days
+
+        first_tweet_ts = min(timestamps) if timestamps else 0.0
+        last_tweet_ts = max(timestamps) if timestamps else 0.0
+
+        activation_age_days = 0
+        if user_created_at and first_tweet_ts:
             try:
-                account_age_days = (latest_tweet['created_at'] - user_created_at).days
+                first_dt = datetime.fromtimestamp(first_tweet_ts, tz=timezone.utc)
+                uca = user_created_at if user_created_at.tzinfo else user_created_at.replace(tzinfo=timezone.utc)
+                activation_age_days = max(0, (first_dt - uca).days)
             except Exception:
-                account_age_days = 0
+                activation_age_days = 0
+
+        reg_iti = tweet_regularity_score_from_timestamps(timestamps)
+        tweet_regularity_score = reg_iti['regularity_score']
+        tweet_avg_interval_seconds = reg_iti['iti_mean']
+
+        reg_daily = daily_posting_consistency(timestamps, window_days=90, min_days=14)
+        daily_score = reg_daily['daily_score']
+        daily_cv_log = reg_daily['daily_cv_log'] if reg_daily['daily_cv_log'] is not None else 0.0
+
+        hourly_entropy = hourly_entropy_from_timestamps(timestamps, window_days=90)
 
         # ---------------------------------------------------------------------
         # [STUDENTS] NODE FEATURES DEFINITION
@@ -167,6 +296,9 @@ class GraphGenerationUser(MongoConnection):
         # 2. Add the new feature as a key-value pair in this dictionary.
         # 3. Update the CSV column headers in `save_checkpoint` (around line 265).
         # ---------------------------------------------------------------------
+        def log1p(x):
+            return round(math.log1p(x), 2)
+
         features = {
             'user_id':           src_hash,     # int — kept for internal joins (do not modify)
             'user_node_id':      src_node_id,  # hex — written to CSV as the final node ID
@@ -178,16 +310,25 @@ class GraphGenerationUser(MongoConnection):
             'original':          n_original,
             
             # --- Profile Features (from their most recent tweet) ---
-            'likes':             latest_user.get('favourites_count', 0),
-            'followers':         latest_user.get('followers_count', 0),
-            'following':         latest_user.get('friends_count', 0),
+            'likes':             log1p(latest_user.get('favourites_count', 0)),
+            'followers':         log1p(latest_user.get('followers_count', 0)),
+            'following':         log1p(latest_user.get('friends_count', 0)),
             'verified':          1 if latest_user.get('verified', False) else 0,
             'account_age_days':  account_age_days,
             
             # --- Network/Content Features ---
             'n_unique_hashtags': len(hashtags),
             'n_unique_mentions': len(mention_targets),
-            
+
+            # --- Automation / Regularity Features ---
+            'activation_age_days':        activation_age_days,
+            'tweet_regularity_score':     log1p(tweet_regularity_score),
+            'regularity_reliable':        1 if n_total >= 20 else 0,
+            'tweet_avg_interval_seconds': log1p(tweet_avg_interval_seconds),
+            'daily_score':                log1p(daily_score),
+            'daily_cv_log':               log1p(daily_cv_log),
+            'hourly_entropy':             log1p(hourly_entropy),
+
             # --- Metadata ---
             'screen_name':       latest_user.get('screen_name', ''), # Used to resolve mentions
         }
@@ -244,7 +385,9 @@ class GraphGenerationUser(MongoConnection):
                 f['original'], f['likes'], f['followers'], f['following'],
                 f['verified'], f['account_age_days'],
                 f['n_unique_hashtags'], f['n_unique_mentions'],
-                f['screen_name']
+                f['activation_age_days'], f['tweet_regularity_score'], 
+                f['regularity_reliable'], f['tweet_avg_interval_seconds'], 
+                f['daily_score'], f['daily_cv_log'], f['hourly_entropy'],
             ]
             for f in user_features_list
         ]
@@ -331,13 +474,13 @@ class GraphGenerationUser(MongoConnection):
                         dropped += 1  # External user — link dropped
 
         # Write final output files
-        Writer.write_on_csv(os.sep.join([out_dir, "user_features"]), all_features)
-        Writer.write_on_csv(os.sep.join([out_dir, "edges_retweet"]), all_rt)
-        Writer.write_on_csv(os.sep.join([out_dir, "edges_reply"]), all_reply)
-        Writer.write_on_csv(os.sep.join([out_dir, "edges_mention"]), all_mention)
+        Writer.write_on_csv(os.sep.join([out_dir, "user_features.csv"]), all_features)
+        Writer.write_on_csv(os.sep.join([out_dir, "edges_retweet.csv"]), all_rt)
+        Writer.write_on_csv(os.sep.join([out_dir, "edges_reply.csv"]), all_reply)
+        Writer.write_on_csv(os.sep.join([out_dir, "edges_mention.csv"]), all_mention)
 
         map_rows = [(sn, Utils.to_node_id(uid)) for sn, uid in screen_name_map.items()]
-        Writer.write_on_csv(os.sep.join([out_dir, "screen_name_map"]), map_rows)
+        Writer.write_on_csv(os.sep.join([out_dir, "screen_name_map.csv"]), map_rows)
 
         if self.delete_tmp_after_merge:
             self.logger.info(f"Deleting temporary checkpoint directory: {checkpoint_dir}")
