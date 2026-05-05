@@ -1,3 +1,4 @@
+from itertools import count
 import logging
 import multiprocessing
 import os
@@ -14,6 +15,158 @@ import pytz
 from pymongo import ASCENDING
 
 import sys
+
+import numpy as np
+import math
+import json
+from collections import Counter
+from datetime import datetime, timezone
+
+def daily_regularity_from_timestamps(timestamps, window_days=90, min_days=7, cv_clip=5.0):
+    """
+    timestamps: list of epoch seconds
+    window_days: number of days to consider ending at last timestamp
+    min_days: minimum non-empty days required to compute a reliable score
+    Returns dict with daily_score, daily_cv_log, median_daily_count, n_days, hourly_consistency
+    """
+    if not timestamps:
+        return {'daily_score': 0.0, 'daily_cv_log': None, 'median_daily_count': 0, 'n_days': 0, 'hourly_consistency': 0.0}
+
+    ts = np.sort(np.array(timestamps, dtype=float))
+    last = int(ts[-1])
+    start = last - int(window_days) * 86400
+
+    # build day bins (UTC)
+    days = [datetime.fromtimestamp(t, tz=timezone.utc).date() for t in ts if t >= start]
+    if not days:
+        return {'daily_score': 0.0, 'daily_cv_log': None, 'median_daily_count': 0, 'n_days': 0, 'hourly_consistency': 0.0}
+
+    day_counts = Counter(days)
+    # ensure contiguous window of days for length window_days
+    unique_days = sorted(list(set(days)))
+    n_days = len(unique_days)
+    counts = [day_counts[d] for d in unique_days]
+
+    # require minimum days with activity
+    if n_days < min_days:
+        # fallback: compute coarse proxy using avg per day
+        median_daily = float(np.median(counts)) if counts else 0.0
+        return {'daily_score': 0.0, 'daily_cv_log': None, 'median_daily_count': median_daily, 'n_days': n_days, 'hourly_consistency': 0.0}
+
+    # log transform counts to stabilize scale
+    counts_arr = np.array(counts, dtype=float)
+    log_counts = np.log1p(counts_arr)
+
+    # coefficient of variation on log scale
+    mean_log = float(log_counts.mean())
+    std_log = float(log_counts.std(ddof=0))
+    daily_cv_log = std_log / mean_log if mean_log > 0 else float('inf')
+    daily_cv_log_clamped = min(daily_cv_log, cv_clip)
+
+    # score: lower cv -> higher score. Map to 0..1
+    # choose scale k so that cv_clip maps to 0
+    k = cv_clip
+    score_from_cv = max(0.0, 1.0 - (daily_cv_log_clamped / k))
+
+    # reward for sustained activity (more days with activity)
+    activity_ratio = n_days / float(window_days)
+    activity_bonus = min(1.0, activity_ratio * 2.0)  # up to 1.0
+
+    # combine: weight CV more
+    w_cv, w_act = 0.75, 0.25
+    daily_score = float(max(0.0, min(1.0, w_cv * score_from_cv + w_act * activity_bonus)))
+
+    # hourly consistency: check distribution of posting hours (UTC)
+    hours = [datetime.fromtimestamp(t, tz=timezone.utc).hour for t in ts if t >= start]
+    if len(hours) < 3:
+        hourly_consistency = 0.0
+    else:
+        # circular measure: convert hours to angles and compute resultant vector length
+        angles = np.array([h / 24.0 * 2.0 * math.pi for h in hours])
+        x = np.cos(angles).mean()
+        y = np.sin(angles).mean()
+        R = math.hypot(x, y)  # 0..1, 1 means same hour every time
+        hourly_consistency = float(R)
+
+    return {
+        'daily_score': daily_score,
+        'daily_cv_log': None if not np.isfinite(daily_cv_log) else float(daily_cv_log),
+        'median_daily_count': float(np.median(counts_arr)),
+        'n_days': n_days,
+        'hourly_consistency': hourly_consistency
+    }
+
+def likely_automated_daily(reg_stats, min_days=14, score_threshold=0.8, hour_consistency_threshold=0.7):
+    """
+    Decision rule to flag likely automated daily posting.
+    Conditions:
+      - at least min_days of activity in window
+      - daily_score >= score_threshold
+      - hourly_consistency >= hour_consistency_threshold
+    """
+    if not reg_stats:
+        return False
+    if reg_stats.get('n_days', 0) < min_days:
+        return False
+    if reg_stats.get('daily_score', 0.0) >= score_threshold and reg_stats.get('hourly_consistency', 0.0) >= hour_consistency_threshold:
+        return True
+    return False
+
+
+def regularity_score_first_last_seconds(first_ts, last_ts, count, eps=1e-9):
+    """
+    Proxy di regolarità usando solo primo e ultimo tweet (secondi).
+    Ritorna dict:
+      - avg_interval: intervallo medio in secondi
+      - log_avg: log1p(avg_interval)
+      - score_raw: 1 / (1 + log_avg)  (più alto = intervalli medi più piccoli/regulari)
+      - n: count
+    Se count < 2 ritorna score_raw = 0.
+    """
+    try:
+        n = int(count or 0)
+    except Exception:
+        return {'avg_interval': None, 'log_avg': None, 'score_raw': 0.0, 'n': 0}
+
+    if n < 2 or not first_ts or not last_ts:
+        return {'avg_interval': None, 'log_avg': None, 'score_raw': 0.0, 'n': n}
+
+    span = float(last_ts) - float(first_ts)
+    if span < 0:
+        span = 0.0
+
+    intervals = max(1, n - 1)
+    avg_seconds = span / intervals
+
+    # log stabilizzato (evita che valori molto piccoli diventino "invisibili")
+    log_avg = math.log1p(avg_seconds + eps)
+
+    # score grezzo: più piccolo log_avg -> score più alto
+    score_raw = 1.0 / (1.0 + log_avg)
+
+    return {
+        'avg_interval': float(avg_seconds),
+        'log_avg': float(log_avg),
+        'score_raw': float(score_raw),
+        'n': n
+    }
+
+def likely_automated_from_first_last(reg, min_tweets=10, score_threshold=0.8, max_avg_seconds=72*3600):
+    """
+    reg: dict da regularity_score_first_last_seconds
+    Condizioni per segnalare automazione:
+      - almeno min_tweets
+      - score_raw >= score_threshold
+      - avg_interval <= max_avg_seconds (es. 72 ore)
+    """
+    if not reg or reg.get('n', 0) < min_tweets:
+        return False
+    score = reg.get('score_raw', 0.0)
+    avg = reg.get('avg_interval', None)
+    if score >= score_threshold and avg is not None and avg <= max_avg_seconds:
+        return True
+    return False
+
 
 # Queste due righe dicono a Python di guardare anche nella cartella principale
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -122,8 +275,20 @@ class GraphGeneration(MongoConnection):
         # verified è un booleano (True/False). Lo trasformiamo in 1/0
         is_verified = 1 if d['user'].get('verified', False) else 0
 
-        # --- ACCOUNT AGE ---
-        user_created_at = d['user'].get('created_at')
+        # --- ACCOUNT AGE (convert to datetime if possible) ---
+        user_created_raw = d['user'].get('created_at')
+        user_created_at = None
+        if user_created_raw:
+            try:
+            # se è già datetime lo lasciamo, altrimenti proviamo a parsare ISO
+                if isinstance(user_created_raw, datetime):
+                    user_created_at = user_created_raw
+                else:
+                    # fromisoformat gestisce ISO; se i formati sono variabili usare dateutil.parser.isoparse
+                    user_created_at = datetime.fromisoformat(user_created_raw)
+            except Exception:
+                user_created_at = None
+
 
         # NON calcoliamo l'age qui
         account_age_days = None
@@ -151,20 +316,27 @@ class GraphGeneration(MongoConnection):
 
         # Prepariamo i dati per l'utente corrente
         # Contiamo 1 tweet totale e 0 retweet di base
-        stats[n_user_id] = {'total': 1,
-                            'retweets': 1 if is_retweet else 0,
-                            'reply': 1 if is_reply else 0,
-                            'original': 1 if (not is_retweet and not is_reply) else 0,
-                            'likes': current_likes,
-                            'followers': current_followers,
-                            'following': current_following,
-                            'verified': is_verified,
-                            'account_age_days': account_age_days,
-                            'created_at_user': user_created_at,
-                            'timestamp': d['created_at'].timestamp(),
-                            'hashtags': hashtags_set,
-                            'mentions': mentions_set
-                            }
+        # Prepariamo i dati per l'utente corrente
+        # Contiamo 1 tweet totale e 0 retweet di base
+        stats[n_user_id] = {
+        'total': 1,
+        'retweets': 1 if is_retweet else 0,
+        'reply': 1 if is_reply else 0,
+        'original': 1 if (not is_retweet and not is_reply) else 0,
+        'likes': current_likes,
+        'followers': current_followers,
+        'following': current_following,
+        'verified': is_verified,
+        'account_age_days': account_age_days,
+        'created_at_user': user_created_at,
+        'timestamp': d['created_at'].timestamp(),
+        'first_tweet_ts': d['created_at'].timestamp(),   # <-- aggiunto: timestamp del primo tweet osservato per questo documento
+        'last_tweet_ts': d['created_at'].timestamp(),
+        'tweet_count': 1,
+        'hashtags': hashtags_set,
+        'mentions': mentions_set
+        }
+
 
         weight = 1
 
@@ -345,10 +517,10 @@ class GraphGeneration(MongoConnection):
                     else:
                         for row in checkpoint_data:
                             key = (int(row[0]), int(row[1]), int(row[2]), float(row[3]))
-                            aggregated_results[key] = eval(row[5])
+                            aggregated_results[key] = (float(row[4]), float(row[5]))
                 final_result_graph = []
                 for k, v in aggregated_results.items():
-                    if k[0] != 1:
+                    if graph_type.value != 1:
                         final_result_graph.append((k[0], k[1], k[2], k[3], v))
                     else:
                         final_result_graph.append((k[0], k[1], k[2], k[3], v[0], v[1]))
@@ -366,11 +538,11 @@ class GraphGeneration(MongoConnection):
                     else:
                         for row in checkpoint_data:
                             key = (int(row[0]), int(row[1]), int(row[2]))
-                            aggregated_results[key] = eval(row[4])
+                            aggregated_results[key] = (float(row[3]), float(row[4]))
 
                 final_result_graph = []
                 for k, v in aggregated_results.items():
-                    if k[0] != 1:
+                    if graph_type.value != 1:
                         final_result_graph.append((k[0], k[1], k[2], v))
                     else:
                         final_result_graph.append((k[0], k[1], k[2], v[0], v[1]))
@@ -473,22 +645,89 @@ class GraphGeneration(MongoConnection):
                             final_user_metrics[uid]['timestamp'] = t_time
                             if user_created_dt:
                                 final_user_metrics[uid]['created_at_user'] = user_created_dt
+                    
+                    # ricostruisci timestamps dal merged data
+                    ts_list = []
+                    if isinstance(data.get('timestamps', None), str) and data.get('timestamps'):
+                        try:
+                            ts_list = json.loads(data['timestamps'])
+                        except Exception:
+                            ts_list = []
+                    elif isinstance(data.get('timestamps', None), list):
+                        ts_list = data['timestamps']
+
+                    reg = daily_regularity_from_timestamps(ts_list, window_days=90, min_days=14)
+                    daily_score = reg['daily_score']
+                    daily_cv_log = reg['daily_cv_log'] if reg['daily_cv_log'] is not None else 0.0
+                    hourly_consistency = reg['hourly_consistency']
+                    likely_auto_daily = 1 if likely_automated_daily(reg, min_days=14, score_threshold=0.8, hour_consistency_threshold=0.7) else 0
+
 
             # Transform into list for CSV with requested fields:
             # uid, total, retweets, reply, original, likes (latest), followers (latest), following (latest),
             # verified (latest), account_age_days (latest), unique_hashtags_count, unique_mentions_count
             final_stats_list = []
             for uid, data in final_user_metrics.items():
-                user_created = data.get('created_at_user', None)
-                latest_ts = data.get('timestamp', 0)
+                # Recupera i campi
+                user_created = data.get('created_at_user', None)   # datetime o stringa o None
+                latest_ts = data.get('timestamp', 0)               # float epoch seconds
+                first_ts = data.get('first_tweet_ts', 0)           # float epoch seconds (primo tweet osservato)
 
-                if user_created and latest_ts:
+                # Inizializza valori di default
+                account_age_days = 0
+                activation_age_days = 0
+
+                # Normalizza/parse di user_created una sola volta
+                user_created_dt = None
+                if user_created:
                     try:
-                        account_age_days = int((datetime.fromtimestamp(latest_ts) - user_created).days)
+                        if isinstance(user_created, str):
+                            # prova a parsare ISO; se i formati sono variabili, considera dateutil.parser.isoparse
+                            user_created_dt = datetime.fromisoformat(user_created)
+                        elif isinstance(user_created, datetime):
+                            user_created_dt = user_created
+                        else:
+                            user_created_dt = None
+                    except Exception:
+                        user_created_dt = None
+
+                # Calcolo account_age_days (giorni tra created_at_user e latest_ts)
+                if user_created_dt and latest_ts:
+                    try:
+                        latest_dt = datetime.fromtimestamp(float(latest_ts), tz=user_created_dt.tzinfo or timezone.utc)
+                        # se user_created_dt non ha tz, trattalo come UTC per coerenza
+                        if user_created_dt.tzinfo is None:
+                            user_created_dt = user_created_dt.replace(tzinfo=timezone.utc)
+                        # converti latest_dt a UTC se necessario
+                        if latest_dt.tzinfo is None:
+                            latest_dt = latest_dt.replace(tzinfo=timezone.utc)
+                        account_age_days = int((latest_dt - user_created_dt).days)
+                        if account_age_days < 0:
+                            account_age_days = 0
                     except Exception:
                         account_age_days = 0
-                else:
-                    account_age_days = 0
+
+                # Calcolo activation_age_days (giorni tra created_at_user e first_tweet_ts)
+                if user_created_dt and first_ts:
+                    try:
+                        first_dt = datetime.fromtimestamp(float(first_ts), tz=user_created_dt.tzinfo or timezone.utc)
+                        if first_dt.tzinfo is None:
+                            first_dt = first_dt.replace(tzinfo=timezone.utc)
+                        activation_age_days = int((first_dt - user_created_dt).days)
+                        if activation_age_days < 0:
+                            activation_age_days = 0
+                    except Exception:
+                        activation_age_days = 0
+
+                # ricava first/last/count dal dict 'data'
+                first_ts = data.get('first_tweet_ts', 0)
+                last_ts = data.get('last_tweet_ts', 0)
+                count = data.get('tweet_count', data.get('total', 0))
+
+                reg = regularity_score_first_last_seconds(first_ts, last_ts, count)
+                tweet_regularity_score = reg['score_raw']
+                tweet_avg_interval_seconds = reg['avg_interval'] if reg['avg_interval'] is not None else 0.0
+                likely_auto = 1 if likely_automated_from_first_last(reg, min_tweets=10, score_threshold=0.8, max_avg_seconds=72*3600) else 0
 
                 final_stats_list.append((
                     uid,
@@ -501,6 +740,14 @@ class GraphGeneration(MongoConnection):
                     data.get('following', 0),
                     data.get('verified', 0),
                     account_age_days,
+                    activation_age_days,
+                    tweet_regularity_score,
+                    tweet_avg_interval_seconds,
+                    likely_auto,
+                     daily_score,
+                    daily_cv_log,
+                    hourly_consistency,
+                    likely_auto_daily,
                     len(data.get('hashtags', set())),
                     len(data.get('mentions', set()))
                 ))
@@ -563,6 +810,9 @@ class GraphGeneration(MongoConnection):
 
                 h_json = json.dumps(list(s.get('hashtags', [])))
                 m_json = json.dumps(list(s.get('mentions', [])))
+                ts_json = json.dumps(list(s.get('timestamps', [])))
+                row.append(ts_json)
+
             
                 # Scriviamo tutti i campi richiesti
                 # Usiamo il tabulatore \t per evitare problemi con virgole nei testi
@@ -747,6 +997,7 @@ class GraphGeneration(MongoConnection):
                             'verified': s['verified'],
                             'account_age_days': s['account_age_days'],
                             'timestamp': s['timestamp'],
+                            'first_tweet_ts': s.get('first_tweet_ts', s['timestamp']),  # <-- aggiunto
                             'hashtags': set(s.get('hashtags', set())),
                             'mentions': set(s.get('mentions', set()))
                         }
@@ -755,10 +1006,32 @@ class GraphGeneration(MongoConnection):
                         intermediate_stats[uid]['retweets'] += s['retweets']
                         intermediate_stats[uid]['reply'] += s['reply']
                         intermediate_stats[uid]['original'] += s['original']
+                        # aggiornamento conteggi e min/max timestamps (in else)
+                        intermediate_stats[uid]['tweet_count'] += s.get('tweet_count', 0)
+                        
+                        existing_first = intermediate_stats[uid].get('first_tweet_ts', None)
+                        new_first = s.get('first_tweet_ts', None)
+                        if new_first:
+                            if existing_first is None or new_first < existing_first:
+                                intermediate_stats[uid]['first_tweet_ts'] = new_first
+
+                        existing_last = intermediate_stats[uid].get('last_tweet_ts', None)
+                        new_last = s.get('last_tweet_ts', None)
+                        if new_last:
+                            if existing_last is None or new_last > existing_last:
+                                intermediate_stats[uid]['last_tweet_ts'] = new_last
+
+                        # quando aggiorni esistente, mantieni il min di first_tweet_ts
+                        if first_tweet_ts:
+                            existing_first = final_user_metrics[uid].get('first_tweet_ts', 0)
+                            if existing_first == 0 or first_tweet_ts < existing_first:
+                                final_user_metrics[uid]['first_tweet_ts'] = first_tweet_ts
 
                         # Merge sets
                         intermediate_stats[uid]['hashtags'].update(s.get('hashtags', set()))
                         intermediate_stats[uid]['mentions'].update(s.get('mentions', set()))
+                        intermediate_stats[uid]['timestamps'].extend(s.get('timestamps', []))
+
 
                         # Update snapshot fields if this tweet is more recent
                         if s['timestamp'] > intermediate_stats[uid]['timestamp']:
@@ -794,9 +1067,8 @@ class GraphGeneration(MongoConnection):
                 self.save_checkpoint(intermediate_result, intermediate_map, process_id)
             if intermediate_stats:
                 self.save_stats_checkpoint(intermediate_stats, process_id)
-        
+
         self.logger.info(f"[Worker {process_id}] Final checkpoint saved")
-        client.close()
         return f"[Worker {process_id}] Done."
 
     def query_data_in_chunks(self, where, project, method="full", batch_size=100000, checkpoint_interval=10000):
