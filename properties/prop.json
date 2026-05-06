@@ -7,7 +7,7 @@
     "to_execute": true,
     "delete_tmp_after_merge": true,
     "parameters": {
-      "checkpoint_every": 2000,
+      "checkpoint_every": 500,
       "input": {
         "type": "json",
         "conf": {

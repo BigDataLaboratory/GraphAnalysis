@@ -254,8 +254,15 @@ class GraphGenerationUser(MongoConnection):
         src_hash = int(user_id)                 # int — used internally as dict key
         src_node_id = Utils.to_node_id(src_hash) # hex str — used only for CSV output
         latest_user = latest_tweet['user']
-        user_created_at = parser.parse(latest_user.get('created_at'))
-
+        
+        user_created_at_raw = latest_user.get('created_at')
+        if isinstance(user_created_at_raw, datetime):
+            user_created_at = user_created_at_raw
+        elif isinstance(user_created_at_raw, str):
+            user_created_at = parser.parse(user_created_at_raw)
+        else:
+            user_created_at = None
+            
         # Account date: timestamp of account creation
         TWITTER_EPOCH = datetime(2006, 3, 21, tzinfo=timezone.utc).timestamp()
         # Instead of keeping the full timestamp (wasting space for unused dates), we start counting the account age from the TWITTER_EPOCH (March 21, 2006).
@@ -531,7 +538,7 @@ class GraphGenerationUser(MongoConnection):
     # MAIN ENTRY POINT
     # ─────────────────────────────────────────────────────────────────────────
 
-    def run(self, checkpoint_every=500, max_users=250):
+    def run(self, checkpoint_every=500, max_users=None):
         """
         Main entry point. Connects to MongoDB and streams all tweets sorted
         by user.id through a cursor, processing one user at a time.
