@@ -92,7 +92,7 @@ def daily_posting_consistency(timestamps, window_days=90, min_days=7, cv_clip=5.
     }
 
 
-def hourly_entropy_from_timestamps(timestamps, window_days=90):
+def internal_tweet_density(timestamps, window_days=90):
     """
     Measures the spread of posting activity across the 24-hour cycle using
     Shannon entropy, normalized to [0, 1] by dividing by log2(24).
@@ -116,6 +116,27 @@ def hourly_entropy_from_timestamps(timestamps, window_days=90):
     raw_entropy = -sum(p * math.log2(p) for p in probs if p > 0)
     return raw_entropy / math.log2(24)
 
+
+def reputation_score(followers_count, friends_count):
+    # TODO Not implemented 
+    return 0
+
+
+def convert_to_datetime(value):
+    if isinstance(value, datetime):
+        return value
+    elif isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(value, tz=timezone.utc)
+        except Exception:
+            return None
+    elif isinstance(value, str):
+        try:
+            return parser.parse(value)
+        except Exception:
+            return None
+    else:
+        return None
 
 class GraphGenerationUser(MongoConnection):
     """
@@ -188,6 +209,8 @@ class GraphGenerationUser(MongoConnection):
         latest_tweet = None
         hashtags = set()
         timestamps = []
+        coords_list = []
+        places_list = []
 
         retweet_targets = defaultdict(int)   # dst_user_id (int) → interaction count
         reply_targets = defaultdict(int)     # dst_user_id (int) → interaction count
@@ -208,6 +231,26 @@ class GraphGenerationUser(MongoConnection):
 
             n_total += 1
             timestamps.append(tweet['created_at'].timestamp())
+
+            # --- geotag extraction ---
+            # coordinates: Twitter may store as tweet['coordinates']['coordinates'] = [lon, lat]
+            if tweet.get('coordinates'):
+                c = tweet['coordinates'].get('coordinates')
+                if c and len(c) >= 2:
+                    coords_list.append((c[1], c[0]))  # store as (lat, lon)
+            elif tweet.get('geo'):
+                g = tweet['geo'].get('coordinates')
+                if g and len(g) >= 2:
+                    coords_list.append((g[0], g[1]))  # geo may be [lat, lon]
+
+            # place: prefer id or full_name
+            place = tweet.get('place')
+            if place:
+                pname = place.get('id') or place.get('full_name') or place.get('name')
+                if pname:
+                    places_list.append(pname)
+            # --- end geotag extraction ---
+
             is_retweet = tweet.get('retweeted_status') is not None
             # In the dataset, -1 indicates the absence of a reply.
             is_reply = tweet.get('in_reply_to_status_id') not in (None, -1)
@@ -254,19 +297,44 @@ class GraphGenerationUser(MongoConnection):
         src_hash = int(user_id)                 # int — used internally as dict key
         src_node_id = Utils.to_node_id(src_hash) # hex str — used only for CSV output
         latest_user = latest_tweet['user']
-        
-        user_created_at_raw = latest_user.get('created_at')
-        if isinstance(user_created_at_raw, datetime):
-            user_created_at = user_created_at_raw
-        elif isinstance(user_created_at_raw, str):
-            user_created_at = parser.parse(user_created_at_raw)
-        else:
-            user_created_at = None
             
         # Account date: timestamp of account creation
+        user_created_at = convert_to_datetime(latest_user.get('created_at'))
         TWITTER_EPOCH = datetime(2006, 3, 21, tzinfo=timezone.utc).timestamp()
         # Instead of keeping the full timestamp (wasting space for unused dates), we start counting the account age from the TWITTER_EPOCH (March 21, 2006).
         account_date = round(user_created_at.timestamp() - TWITTER_EPOCH) if user_created_at else 0
+
+        # profile url extraction
+        profile_url_raw = latest_user.get('url') or ''
+        entities_urls = []
+        try:
+            entities_urls = latest_user.get('entities', {}).get('url', {}).get('urls', []) or []
+        except Exception:
+            entities_urls = []
+
+        # prefer expanded_url if available
+        profile_urls = []
+        if profile_url_raw:
+            profile_urls.append(profile_url_raw)
+        for u in entities_urls:
+            if isinstance(u, dict):
+                expanded = u.get('expanded_url') or u.get('url')
+                if expanded:
+                    profile_urls.append(expanded)
+
+
+        # normalize and dedupe
+        profile_urls = list(dict.fromkeys([str(x).strip() for x in profile_urls if x]))
+        profile_has_url = 1 if profile_urls else 0
+        profile_primary_domain = ''
+        if profile_has_url:
+            # extract domain simply
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(profile_urls[0])
+                profile_primary_domain = parsed.netloc.lower()
+            except Exception:
+                profile_primary_domain = ''
 
         first_tweet_ts = min(timestamps) if timestamps else 0.0
 
@@ -287,7 +355,9 @@ class GraphGenerationUser(MongoConnection):
         daily_score = reg_daily['daily_score']
         daily_cv_log = reg_daily['daily_cv_log'] if reg_daily['daily_cv_log'] is not None else 0.0
 
-        hourly_entropy = hourly_entropy_from_timestamps(timestamps, window_days=90)
+        international_density = internal_tweet_density(timestamps, window_days=90)
+
+        profile_geo_enabled = int(latest_user.get('geo_enabled', False))
 
         # ---------------------------------------------------------------------
         # [STUDENTS] NODE FEATURES DEFINITION
@@ -321,7 +391,10 @@ class GraphGenerationUser(MongoConnection):
             'following':         log1p(latest_user.get('friends_count', 0)),
             'verified':          1 if latest_user.get('verified', False) else 0,
             'account_date':      account_date,
-            
+            'listed_count':      log1p(latest_user.get('listed_count', 0)),
+            'favourites_count':  log1p(latest_user.get('favourites_count', 0)),
+            'reputation_score':  0,  # TODO NOT IMPLEMENTED
+
             # --- Network/Content Features ---
             'n_unique_hashtags': len(hashtags),
             'n_unique_mentions': len(mention_targets),
@@ -333,11 +406,14 @@ class GraphGenerationUser(MongoConnection):
             'tweet_avg_interval_seconds': log1p(tweet_avg_interval_seconds),
             'daily_score':                round(daily_score, 2),
             'daily_cv_log':               round(daily_cv_log, 2),
-            'hourly_entropy':             round(hourly_entropy, 2),
+            'internal_tweet_density':     round(international_density, 2),
+            'profile_has_url':            profile_has_url,
+            'geo_enabled_flag':           profile_geo_enabled,
 
-            # --- Metadata ---
-            'screen_name':       latest_user.get('screen_name', ''), # Used to resolve mentions
+            # --- Metadata (not features) ---
+            'screen_name':                latest_user.get('screen_name', ''), # Used to resolve mentions
         }
+
 
         # Retweet and reply edges — node IDs in hex for compact CSV output
         edges_retweet = [
@@ -389,11 +465,13 @@ class GraphGenerationUser(MongoConnection):
             [
                 f['user_node_id'], f['total'], f['retweets'], f['replies'],
                 f['original'], f['likes'], f['followers'], f['following'],
-                f['verified'], f['account_date'],
+                f['verified'], f['account_date'], f['listed_count'], 
+                f['favourites_count'], f['reputation_score'],
                 f['n_unique_hashtags'], f['n_unique_mentions'],
                 f['activation_age_days'], f['tweet_regularity_score'], 
                 f['regularity_reliable'], f['tweet_avg_interval_seconds'], 
-                f['daily_score'], f['daily_cv_log'], f['hourly_entropy'],
+                f['daily_score'], f['daily_cv_log'], f['internal_tweet_density'], 
+                f['profile_has_url'], f['geo_enabled_flag'],
             ]
             for f in user_features_list
         ]
@@ -497,9 +575,10 @@ class GraphGenerationUser(MongoConnection):
         # Write CSV headers
         user_features_header = [
             'user_node_id', 'total', 'retweets', 'replies', 'original', 'likes', 'followers', 'following',
-            'verified', 'account_date', 'n_unique_hashtags', 'n_unique_mentions',
-            'activation_age_days', 'tweet_regularity_score', 'regularity_reliable',
-            'tweet_avg_interval_seconds', 'daily_score', 'daily_cv_log', 'hourly_entropy'
+            'verified', 'account_date', 'listed_count', 'favourites_count', 'reputation_score',
+            'n_unique_hashtags', 'n_unique_mentions','activation_age_days', 'tweet_regularity_score', 
+            'regularity_reliable', 'tweet_avg_interval_seconds', 'daily_score', 'daily_cv_log', 
+            'internal_tweet_density', 'profile_has_url', 'geo_enabled_flag'
         ]
         edge_header = ['src', 'dst', 'weight']
         mention_header = ['src', 'dst', 'weight']
