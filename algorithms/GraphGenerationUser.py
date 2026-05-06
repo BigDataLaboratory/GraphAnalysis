@@ -427,6 +427,7 @@ class GraphGenerationUser(MongoConnection):
         all_mention = []
         
         screen_name_map = {}
+        valid_user_node_ids = set()
 
         # First pass: build the complete screen_name_map from all batches
         self.logger.info("Building complete screen_name map from checkpoints...")
@@ -438,12 +439,18 @@ class GraphGenerationUser(MongoConnection):
             map_file = os.sep.join([batch_path, "screen_name_map"])
             if os.path.exists(map_file):
                 for row in Writer.load_checkpoint_file(map_file):
-                    screen_name_map[row[0].lower()] = int(row[1])
+                    screen_name = row[0].lower()
+                    uid_hash = int(row[1])
+                    screen_name_map[screen_name] = uid_hash
+                    valid_user_node_ids.add(Utils.to_node_id(uid_hash))
 
-        resolved = 0
-        dropped = 0
+        resolved_mention = 0
+        dropped_mention = 0
+        dropped_rt = 0
+        dropped_reply = 0
 
-        # Second pass: read all data and resolve mentions
+        # Second pass: read all data and resolve/filter edges
+        self.logger.info("Filtering and resolving edges...")
         for batch_dir in sorted(os.listdir(checkpoint_dir)):
             batch_path = os.sep.join([checkpoint_dir, batch_dir])
             if not os.path.isdir(batch_path):
@@ -455,11 +462,19 @@ class GraphGenerationUser(MongoConnection):
 
             rt_file = os.sep.join([batch_path, "edges_retweet"])
             if os.path.exists(rt_file):
-                all_rt.extend(Writer.load_checkpoint_file(rt_file))
+                for row in Writer.load_checkpoint_file(rt_file):
+                    if row[1] in valid_user_node_ids:
+                        all_rt.append(row)
+                    else:
+                        dropped_rt += 1
 
             rep_file = os.sep.join([batch_path, "edges_reply"])
             if os.path.exists(rep_file):
-                all_reply.extend(Writer.load_checkpoint_file(rep_file))
+                for row in Writer.load_checkpoint_file(rep_file):
+                    if row[1] in valid_user_node_ids:
+                        all_reply.append(row)
+                    else:
+                        dropped_reply += 1
 
             men_file = os.sep.join([batch_path, "edges_mention_raw"])
             if os.path.exists(men_file):
@@ -468,9 +483,9 @@ class GraphGenerationUser(MongoConnection):
                     dst = screen_name_map.get(screen_name.lower())
                     if dst is not None:
                         all_mention.append((src, Utils.to_node_id(dst), weight))
-                        resolved += 1
+                        resolved_mention += 1
                     else:
-                        dropped += 1  # External user — link dropped
+                        dropped_mention += 1  # External user — link dropped
 
         # Write final output files
         Writer.write_on_csv(os.sep.join([out_dir, "user_features.csv"]), all_features)
@@ -489,9 +504,10 @@ class GraphGenerationUser(MongoConnection):
                 self.logger.warning(f"Failed to delete {checkpoint_dir}: {e}")
 
         self.logger.info(
-            f"Merge complete. "
-            f"Mention edges: {resolved} resolved, {dropped} dropped (external users). "
-            f"Output in {out_dir}"
+            f"Merge complete. Output in {out_dir}\n"
+            f"  Mentions: {resolved_mention} resolved, {dropped_mention} dropped (external users).\n"
+            f"  Retweets: {len(all_rt)} kept, {dropped_rt} dropped (external users).\n"
+            f"  Replies:  {len(all_reply)} kept, {dropped_reply} dropped (external users)."
         )
 
     # ─────────────────────────────────────────────────────────────────────────
