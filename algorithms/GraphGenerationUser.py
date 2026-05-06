@@ -91,6 +91,33 @@ def daily_posting_consistency(timestamps, window_days=90, min_days=7, cv_clip=5.
     }
 
 
+def international_tweet_density(timestamps, window_days=90):
+    """
+    Measures how globally distributed the user's posting hours are.
+    High values → activity spread across many time zones (international / automated).
+    Low values → activity concentrated in a narrow local time window.
+
+    Returns a score in [0, 1].
+    """
+    if not timestamps:
+        return 0.0
+
+    ts = np.array(timestamps, dtype=float)
+    start = float(ts.max()) - int(window_days) * 86400
+
+    hours = [datetime.fromtimestamp(t, tz=timezone.utc).hour for t in ts if t >= start]
+    if len(hours) < 3:
+        return 0.0
+
+    hour_counts = Counter(hours)
+    total = len(hours)
+    probs = [c / total for c in hour_counts.values()]
+
+    # Shannon entropy normalized by log2(24)
+    raw_entropy = -sum(p * math.log2(p) for p in probs if p > 0)
+    return raw_entropy / math.log2(24)
+
+
 def hourly_entropy_from_timestamps(timestamps, window_days=90):
     """
     Measures the spread of posting activity across the 24-hour cycle using
@@ -114,6 +141,120 @@ def hourly_entropy_from_timestamps(timestamps, window_days=90):
     probs = [c / total_h for c in hour_counts.values()]
     raw_entropy = -sum(p * math.log2(p) for p in probs if p > 0)
     return raw_entropy / math.log2(24)
+
+
+def reputation_score(features):
+    """
+    Computes a synthetic reputation score in [0, 1] using:
+    - followers (log-scaled)
+    - verified status
+    - account age
+    - activity balance (original tweets / total)
+    - anti-bot signals (regularity_score, daily_score, hourly_entropy)
+
+    Input: the 'features' dict produced in process_user_tweets.
+    """
+    # followers (already log1p scaled)
+    followers = features.get('followers', 0)
+
+    # verified (0 or 1)
+    verified = features.get('verified', 0)
+
+    # account age (days)
+    age = features.get('account_age_days', 0)
+    age_norm = min(1.0, age / 3650.0)  # 10 years → 1.0
+
+    # activity balance
+    total = features.get('total', 1)
+    original = features.get('original', 0)
+    originality = original / total if total > 0 else 0.0
+
+    # anti-bot signals (already log1p scaled)
+    reg = features.get('tweet_regularity_score', 0)
+    daily = features.get('daily_score', 0)
+    entropy = features.get('hourly_entropy', 0)
+
+    # combine with weights
+    score = (
+        0.35 * followers +
+        0.20 * verified +
+        0.15 * age_norm +
+        0.10 * originality +
+        0.10 * entropy +
+        0.05 * daily +
+        0.05 * (1 - reg)   # reg alto = bot → reputazione bassa
+    )
+
+    # normalize to [0,1]
+    return float(max(0.0, min(1.0, score)))
+
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return R * c
+
+def geo_features_from_tweets(timestamps, coords_list, places_list, profile_geo_enabled, window_days=90):
+    """
+    coords_list: list of (lat, lon) tuples extracted from tweet['coordinates'] or tweet['geo']
+    places_list: list of place identifiers (tweet['place']['full_name'] or place id)
+    profile_geo_enabled: bool from latest_user.get('geo_enabled', False)
+    Returns dict with:
+      - geo_enabled_flag (0/1)
+      - pct_geotagged (0..1)
+      - n_unique_places (int)
+      - n_geotagged (int)
+      - geo_entropy (0..1) based on place distribution
+      - geo_spread_km (mean pairwise distance or centroid spread)
+      - inferred_home (lat, lon) or None
+    """
+    res = {
+        'geo_enabled_flag': 1 if profile_geo_enabled else 0,
+        'pct_geotagged': 0.0,
+        'n_unique_places': 0,
+        'n_geotagged': 0,
+        'geo_entropy': 0.0,
+        'geo_spread_km': 0.0,
+        'inferred_home_lat': None,
+        'inferred_home_lon': None
+    }
+
+    n_total = len(timestamps or [])
+    n_geo = len(coords_list or []) + len(places_list or [])
+    res['n_geotagged'] = n_geo
+    res['pct_geotagged'] = float(n_geo) / n_total if n_total > 0 else 0.0
+
+    # unique places
+    unique_places = set([p for p in places_list if p])
+    res['n_unique_places'] = len(unique_places)
+
+    # entropy on places
+    if n_geo > 1 and places_list:
+        cnt = Counter([p for p in places_list if p])
+        total = sum(cnt.values())
+        probs = [v/total for v in cnt.values()]
+        raw_entropy = -sum(p * math.log2(p) for p in probs if p > 0)
+        res['geo_entropy'] = raw_entropy / math.log2(max(2, len(cnt)))  # normalized by log2(n_places)
+    else:
+        res['geo_entropy'] = 0.0
+
+    # centroid and spread (use coords_list only)
+    coords = [(float(lat), float(lon)) for lat, lon in coords_list if lat is not None and lon is not None] if coords_list else []
+    if coords:
+        mean_lat = sum(lat for lat, _ in coords) / len(coords)
+        mean_lon = sum(lon for _, lon in coords) / len(coords)
+        res['inferred_home_lat'] = round(mean_lat, 6)
+        res['inferred_home_lon'] = round(mean_lon, 6)
+        # compute average distance to centroid
+        dists = [_haversine_km(lat, lon, mean_lat, mean_lon) for lat, lon in coords]
+        res['geo_spread_km'] = float(sum(dists) / len(dists))
+    else:
+        res['geo_spread_km'] = 0.0
+
+    return res
 
 
 class GraphGenerationUser(MongoConnection):
@@ -187,6 +328,8 @@ class GraphGenerationUser(MongoConnection):
         latest_tweet = None
         hashtags = set()
         timestamps = []
+        coords_list = []
+        places_list = []
 
         retweet_targets = defaultdict(int)   # dst_user_id (int) → interaction count
         reply_targets = defaultdict(int)     # dst_user_id (int) → interaction count
@@ -208,6 +351,26 @@ class GraphGenerationUser(MongoConnection):
 
             n_total += 1
             timestamps.append(tweet['created_at'].timestamp())
+
+            # --- geotag extraction ---
+            # coordinates: Twitter may store as tweet['coordinates']['coordinates'] = [lon, lat]
+            if tweet.get('coordinates'):
+                c = tweet['coordinates'].get('coordinates')
+                if c and len(c) >= 2:
+                    coords_list.append((c[1], c[0]))  # store as (lat, lon)
+            elif tweet.get('geo'):
+                g = tweet['geo'].get('coordinates')
+                if g and len(g) >= 2:
+                    coords_list.append((g[0], g[1]))  # geo may be [lat, lon]
+
+            # place: prefer id or full_name
+            place = tweet.get('place')
+            if place:
+                pname = place.get('id') or place.get('full_name') or place.get('name')
+                if pname:
+                    places_list.append(pname)
+            # --- end geotag extraction ---
+
             is_retweet = tweet.get('retweeted_status') is not None
             # In the dataset, -1 indicates the absence of a reply.
             is_reply = tweet.get('in_reply_to_status_id') not in (None, -1)
@@ -256,6 +419,38 @@ class GraphGenerationUser(MongoConnection):
         latest_user = latest_tweet['user']
         user_created_at = parser.parse(latest_user.get('created_at'))
 
+        # profile url extraction
+        profile_url_raw = latest_user.get('url') or ''
+        entities_urls = []
+        try:
+            entities_urls = latest_user.get('entities', {}).get('url', {}).get('urls', []) or []
+        except Exception:
+            entities_urls = []
+
+        # prefer expanded_url if available
+        profile_urls = []
+        if profile_url_raw:
+            profile_urls.append(profile_url_raw)
+        for u in entities_urls:
+            if isinstance(u, dict):
+                expanded = u.get('expanded_url') or u.get('url')
+                if expanded:
+                    profile_urls.append(expanded)
+
+
+        # normalize and dedupe
+        profile_urls = list(dict.fromkeys([str(x).strip() for x in profile_urls if x]))
+        profile_has_url = 1 if profile_urls else 0
+        profile_primary_domain = ''
+        if profile_has_url:
+            # extract domain simply
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(profile_urls[0])
+                profile_primary_domain = parsed.netloc.lower()
+            except Exception:
+                profile_primary_domain = ''
+
         # Account age: days between account creation and last observed tweet
         account_age_days = 0
         if user_created_at:
@@ -282,6 +477,20 @@ class GraphGenerationUser(MongoConnection):
         daily_cv_log = reg_daily['daily_cv_log'] if reg_daily['daily_cv_log'] is not None else 0.0
 
         hourly_entropy = hourly_entropy_from_timestamps(timestamps, window_days=90)
+        international_density = international_tweet_density(timestamps, window_days=90)
+
+        profile_geo_enabled = bool(latest_user.get('geo_enabled', False))
+        geo_stats = geo_features_from_tweets(timestamps, coords_list, places_list, profile_geo_enabled, window_days=90)
+
+        geo_enabled_flag = geo_stats['geo_enabled_flag']
+        pct_geotagged = geo_stats['pct_geotagged']
+        n_unique_places = geo_stats['n_unique_places']
+        geo_entropy = geo_stats['geo_entropy']
+        geo_spread_km = geo_stats['geo_spread_km']
+        inferred_home_lat = geo_stats['inferred_home_lat']
+        inferred_home_lon = geo_stats['inferred_home_lon']
+
+
 
         # ---------------------------------------------------------------------
         # [STUDENTS] NODE FEATURES DEFINITION
@@ -315,6 +524,8 @@ class GraphGenerationUser(MongoConnection):
             'following':         log1p(latest_user.get('friends_count', 0)),
             'verified':          1 if latest_user.get('verified', False) else 0,
             'account_age_days':  account_age_days,
+            'listed_count':      log1p(latest_user.get('listed_count', 0)),
+            'favourites_count':  latest_user.get('favourites_count', 0),
             
             # --- Network/Content Features ---
             'n_unique_hashtags': len(hashtags),
@@ -328,10 +539,26 @@ class GraphGenerationUser(MongoConnection):
             'daily_score':                log1p(daily_score),
             'daily_cv_log':               log1p(daily_cv_log),
             'hourly_entropy':             log1p(hourly_entropy),
+            'international_tweet_density': log1p(international_density),
 
             # --- Metadata ---
             'screen_name':       latest_user.get('screen_name', ''), # Used to resolve mentions
+            'profile_has_url':         profile_has_url,
+            'profile_urls':            '|'.join(profile_urls),   # serializza come stringa per CSV
+            'profile_primary_domain':  profile_primary_domain,
+
+            # --- Geo features ---
+            'geo_enabled_flag':        geo_enabled_flag,
+            'pct_geotagged':           round(pct_geotagged, 4),
+            'n_unique_places':         n_unique_places,
+            'geo_entropy':             round(geo_entropy, 4),
+            'geo_spread_km':           round(geo_spread_km, 2),
+            'inferred_home_lat':       inferred_home_lat,
+            'inferred_home_lon':       inferred_home_lon,
         }
+
+        features['reputation_score'] = reputation_score(features)
+
 
         # Retweet and reply edges — node IDs in hex for compact CSV output
         edges_retweet = [
@@ -384,10 +611,16 @@ class GraphGenerationUser(MongoConnection):
                 f['user_node_id'], f['total'], f['retweets'], f['replies'],
                 f['original'], f['likes'], f['followers'], f['following'],
                 f['verified'], f['account_age_days'],
+                f['listed_count'], f['favourites_count'],
                 f['n_unique_hashtags'], f['n_unique_mentions'],
                 f['activation_age_days'], f['tweet_regularity_score'], 
                 f['regularity_reliable'], f['tweet_avg_interval_seconds'], 
                 f['daily_score'], f['daily_cv_log'], f['hourly_entropy'],
+                f['geo_enabled_flag'], f['pct_geotagged'], f['n_unique_places'],
+                f['geo_entropy'], f['geo_spread_km'], f['inferred_home_lat'], f['inferred_home_lon'],
+                f['international_tweet_density'], f['reputation_score'],
+                f['international_tweet_density'], f['reputation_score'],
+                f['screen_name'], f['profile_has_url'], f['profile_urls'], f['profile_primary_domain'],
             ]
             for f in user_features_list
         ]
