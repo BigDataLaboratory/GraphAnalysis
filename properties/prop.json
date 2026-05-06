@@ -48,56 +48,6 @@
       }
     }
   },
-  "gnn_training": {
-    "to_execute": false,
-    "data": {
-      "data_dir": "resources/4e06a07847b411f18cf79c29764a0d18",
-      "graph_type": {
-        "reply": true,
-        "retweet": false,
-        "mention": false,
-        "late_fuse": false
-      },
-      "train_ratio": 0.70,
-      "val_ratio": 0.15,
-      "test_ratio": 0.15
-    },
-    "model": {
-      "encoder": {
-        "gcn": false,
-        "gat": false,
-        "gatv2": false,
-        "gine": true,
-        "sage": false,
-        "transformer": false,
-        "nnconv": false
-      },
-      "decoder": "mlp",
-      "num_epochs": 50,
-      "learning_rate": 0.001,
-      "weight_decay": 1e-5,
-      "hidden_dim": 128,
-      "embed_dim": 64,
-      "dropout": 0.2,
-      "neg_ratio": 1.0,
-      "decoder_hidden": 64,
-      "decoder_dropout": 0.3,
-      "scheduler": false,
-      "grad_clip": null,
-      "early_stopping_patience": 10,
-      "seed": 777,
-      "fusion": "concat",
-      "batch_size": 512,
-      "num_neighbors": [10, 5]
-    },
-    "evaluation": {
-      "approaches": ["cosine", "mlp", "gnn"],
-      "neg_ratios": [1, 9, 100]
-    },
-    "output_dir": "output/models",
-    "log_dir": "output/logs",
-    "print_logs": false
-  },
   "community_detection": {
     "parameters": {
       "read_from_edge_list": false,

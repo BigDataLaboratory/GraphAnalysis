@@ -33,7 +33,3 @@ zict==3.0.0
 zipp==3.20.2
 bertopic~=0.16.4
 pycombo==0.1.8
-torch
-torch_geometric
-torch-scatter 
-torch-sparse

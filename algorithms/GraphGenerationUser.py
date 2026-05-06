@@ -6,6 +6,7 @@ import uuid
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pymongo import ASCENDING
+from dateutil import parser  # Import to parse ISO dates
 
 import numpy as np
 import sys
@@ -194,7 +195,6 @@ class GraphGenerationUser(MongoConnection):
 
         seen_tweet_ids = set()
 
-        from dateutil import parser  # Import to parse ISO dates
 
         for tweet in tweets:
             tweet_id = tweet.get('id')
@@ -320,13 +320,13 @@ class GraphGenerationUser(MongoConnection):
             'n_unique_mentions': len(mention_targets),
 
             # --- Automation / Regularity Features ---
-            'activation_age_days':        activation_age_days,
+            'activation_age_days':        round(math.log1p(activation_age_days), 2),
             'tweet_regularity_score':     log1p(tweet_regularity_score),
             'regularity_reliable':        1 if n_total >= 20 else 0,
             'tweet_avg_interval_seconds': log1p(tweet_avg_interval_seconds),
-            'daily_score':                log1p(daily_score),
-            'daily_cv_log':               log1p(daily_cv_log),
-            'hourly_entropy':             log1p(hourly_entropy),
+            'daily_score':                round(daily_score, 2),
+            'daily_cv_log':               round(daily_cv_log, 2),
+            'hourly_entropy':             round(hourly_entropy, 2),
 
             # --- Metadata ---
             'screen_name':       latest_user.get('screen_name', ''), # Used to resolve mentions
@@ -487,7 +487,24 @@ class GraphGenerationUser(MongoConnection):
                     else:
                         dropped_mention += 1  # External user — link dropped
 
-        # Write final output files
+        # Write CSV headers
+        user_features_header = [
+            'user_node_id', 'total', 'retweets', 'replies', 'original', 'likes', 'followers', 'following',
+            'verified', 'account_date', 'n_unique_hashtags', 'n_unique_mentions',
+            'activation_age_days', 'tweet_regularity_score', 'regularity_reliable',
+            'tweet_avg_interval_seconds', 'daily_score', 'daily_cv_log', 'hourly_entropy'
+        ]
+        edge_header = ['src', 'dst', 'weight']
+        mention_header = ['src', 'dst', 'weight']
+        screen_name_map_header = ['screen_name', 'user_id']
+
+        Writer.write_on_csv(os.sep.join([out_dir, "user_features.csv"]), [user_features_header])
+        Writer.write_on_csv(os.sep.join([out_dir, "edges_retweet.csv"]), [edge_header])
+        Writer.write_on_csv(os.sep.join([out_dir, "edges_reply.csv"]), [edge_header])
+        Writer.write_on_csv(os.sep.join([out_dir, "edges_mention.csv"]), [mention_header])
+        Writer.write_on_csv(os.sep.join([out_dir, "screen_name_map.csv"]), [screen_name_map_header])
+
+        # Append data
         Writer.write_on_csv(os.sep.join([out_dir, "user_features.csv"]), all_features)
         Writer.write_on_csv(os.sep.join([out_dir, "edges_retweet.csv"]), all_rt)
         Writer.write_on_csv(os.sep.join([out_dir, "edges_reply.csv"]), all_reply)
@@ -514,7 +531,7 @@ class GraphGenerationUser(MongoConnection):
     # MAIN ENTRY POINT
     # ─────────────────────────────────────────────────────────────────────────
 
-    def run(self, checkpoint_every=500):
+    def run(self, checkpoint_every=500, max_users=250):
         """
         Main entry point. Connects to MongoDB and streams all tweets sorted
         by user.id through a cursor, processing one user at a time.
@@ -524,7 +541,9 @@ class GraphGenerationUser(MongoConnection):
         Checkpoints are written to disk every `checkpoint_every` users.
 
         :param checkpoint_every: Number of users to process before writing
-                                 a checkpoint to disk (default: 5000).
+                                 a checkpoint to disk (default: 500).
+        :param max_users: Optional hard limit on the number of users to extract.
+                          If set (e.g., 500), extraction stops early.
         """
         client = self.connect()
         col = self.get_db()[self.get_collection()]
@@ -576,7 +595,9 @@ class GraphGenerationUser(MongoConnection):
                 )
                 features_list, edges_rt, edges_reply, mention_raw, screen_names_list = [], [], [], [], []
                 batch_id += 1
-
+            if max_users is not None and user_count >= max_users:
+                self.logger.info(f"Reached max_users limit ({max_users}). Stopping extraction early.")
+                break
         # Save remaining data
         if features_list:
             self.save_checkpoint(
