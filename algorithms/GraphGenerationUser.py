@@ -297,6 +297,13 @@ class GraphGenerationUser(MongoConnection):
         src_hash = int(user_id)                 # int — used internally as dict key
         src_node_id = Utils.to_node_id(src_hash) # hex str — used only for CSV output
         latest_user = latest_tweet['user']
+
+        # --- Social Influence Ratio (followers / (followers + friends)) ---
+        followers_raw = latest_user.get('followers_count', 0) or 0
+        friends_raw = latest_user.get('friends_count', 0) or 0
+        den = followers_raw + friends_raw
+        social_influence_ratio = followers_raw / den if den > 0 else 0.0
+
             
         # Account date: timestamp of account creation
         user_created_at = convert_to_datetime(latest_user.get('created_at'))
@@ -355,7 +362,7 @@ class GraphGenerationUser(MongoConnection):
         daily_score = reg_daily['daily_score']
         daily_cv_log = reg_daily['daily_cv_log'] if reg_daily['daily_cv_log'] is not None else 0.0
 
-        international_density = internal_tweet_density(timestamps, window_days=90)
+        internal_density = internal_tweet_density(timestamps, window_days=90)
 
         profile_geo_enabled = int(latest_user.get('geo_enabled', False))
 
@@ -393,7 +400,7 @@ class GraphGenerationUser(MongoConnection):
             'account_date':      account_date,
             'listed_count':      log1p(latest_user.get('listed_count', 0)),
             'favourites_count':  log1p(latest_user.get('favourites_count', 0)),
-            'reputation_score':  0,  # TODO NOT IMPLEMENTED
+            'reputation_score': round(social_influence_ratio, 4),
 
             # --- Network/Content Features ---
             'n_unique_hashtags': len(hashtags),
@@ -406,7 +413,7 @@ class GraphGenerationUser(MongoConnection):
             'tweet_avg_interval_seconds': log1p(tweet_avg_interval_seconds),
             'daily_score':                round(daily_score, 2),
             'daily_cv_log':               round(daily_cv_log, 2),
-            'internal_tweet_density':     round(international_density, 2),
+            'internal_tweet_density':     round(internal_density, 2),
             'profile_has_url':            profile_has_url,
             'geo_enabled_flag':           profile_geo_enabled,
 
@@ -465,7 +472,7 @@ class GraphGenerationUser(MongoConnection):
             [
                 f['user_node_id'], f['total'], f['retweets'], f['replies'],
                 f['original'], f['likes'], f['followers'], f['following'],
-                f['verified'], f['account_date'], f['listed_count'], 
+                f['verified'], f['account_date'], f['listed_count'],
                 f['favourites_count'], f['reputation_score'],
                 f['n_unique_hashtags'], f['n_unique_mentions'],
                 f['activation_age_days'], f['tweet_regularity_score'], 
