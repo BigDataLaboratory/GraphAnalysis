@@ -6,6 +6,7 @@ import uuid
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pymongo import ASCENDING
+from dateutil import parser  # Import to parse ISO dates
 
 import numpy as np
 import sys
@@ -91,34 +92,7 @@ def daily_posting_consistency(timestamps, window_days=90, min_days=7, cv_clip=5.
     }
 
 
-def international_tweet_density(timestamps, window_days=90):
-    """
-    Measures how globally distributed the user's posting hours are.
-    High values → activity spread across many time zones (international / automated).
-    Low values → activity concentrated in a narrow local time window.
-
-    Returns a score in [0, 1].
-    """
-    if not timestamps:
-        return 0.0
-
-    ts = np.array(timestamps, dtype=float)
-    start = float(ts.max()) - int(window_days) * 86400
-
-    hours = [datetime.fromtimestamp(t, tz=timezone.utc).hour for t in ts if t >= start]
-    if len(hours) < 3:
-        return 0.0
-
-    hour_counts = Counter(hours)
-    total = len(hours)
-    probs = [c / total for c in hour_counts.values()]
-
-    # Shannon entropy normalized by log2(24)
-    raw_entropy = -sum(p * math.log2(p) for p in probs if p > 0)
-    return raw_entropy / math.log2(24)
-
-
-def hourly_entropy_from_timestamps(timestamps, window_days=90):
+def internal_tweet_density(timestamps, window_days=90):
     """
     Measures the spread of posting activity across the 24-hour cycle using
     Shannon entropy, normalized to [0, 1] by dividing by log2(24).
@@ -143,119 +117,21 @@ def hourly_entropy_from_timestamps(timestamps, window_days=90):
     return raw_entropy / math.log2(24)
 
 
-def reputation_score(features):
-    """
-    Computes a synthetic reputation score in [0, 1] using:
-    - followers (log-scaled)
-    - verified status
-    - account age
-    - activity balance (original tweets / total)
-    - anti-bot signals (regularity_score, daily_score, hourly_entropy)
-
-    Input: the 'features' dict produced in process_user_tweets.
-    """
-    # followers (already log1p scaled)
-    followers = features.get('followers', 0)
-
-    # verified (0 or 1)
-    verified = features.get('verified', 0)
-
-    # account age (days)
-    age = features.get('account_age_days', 0)
-    age_norm = min(1.0, age / 3650.0)  # 10 years → 1.0
-
-    # activity balance
-    total = features.get('total', 1)
-    original = features.get('original', 0)
-    originality = original / total if total > 0 else 0.0
-
-    # anti-bot signals (already log1p scaled)
-    reg = features.get('tweet_regularity_score', 0)
-    daily = features.get('daily_score', 0)
-    entropy = features.get('hourly_entropy', 0)
-
-    # combine with weights
-    score = (
-        0.35 * followers +
-        0.20 * verified +
-        0.15 * age_norm +
-        0.10 * originality +
-        0.10 * entropy +
-        0.05 * daily +
-        0.05 * (1 - reg)   # reg alto = bot → reputazione bassa
-    )
-
-    # normalize to [0,1]
-    return float(max(0.0, min(1.0, score)))
-
-
-def _haversine_km(lat1, lon1, lat2, lon2):
-    R = 6371.0
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    return R * c
-
-def geo_features_from_tweets(timestamps, coords_list, places_list, profile_geo_enabled, window_days=90):
-    """
-    coords_list: list of (lat, lon) tuples extracted from tweet['coordinates'] or tweet['geo']
-    places_list: list of place identifiers (tweet['place']['full_name'] or place id)
-    profile_geo_enabled: bool from latest_user.get('geo_enabled', False)
-    Returns dict with:
-      - geo_enabled_flag (0/1)
-      - pct_geotagged (0..1)
-      - n_unique_places (int)
-      - n_geotagged (int)
-      - geo_entropy (0..1) based on place distribution
-      - geo_spread_km (mean pairwise distance or centroid spread)
-      - inferred_home (lat, lon) or None
-    """
-    res = {
-        'geo_enabled_flag': 1 if profile_geo_enabled else 0,
-        'pct_geotagged': 0.0,
-        'n_unique_places': 0,
-        'n_geotagged': 0,
-        'geo_entropy': 0.0,
-        'geo_spread_km': 0.0,
-        'inferred_home_lat': None,
-        'inferred_home_lon': None
-    }
-
-    n_total = len(timestamps or [])
-    n_geo = len(coords_list or []) + len(places_list or [])
-    res['n_geotagged'] = n_geo
-    res['pct_geotagged'] = float(n_geo) / n_total if n_total > 0 else 0.0
-
-    # unique places
-    unique_places = set([p for p in places_list if p])
-    res['n_unique_places'] = len(unique_places)
-
-    # entropy on places
-    if n_geo > 1 and places_list:
-        cnt = Counter([p for p in places_list if p])
-        total = sum(cnt.values())
-        probs = [v/total for v in cnt.values()]
-        raw_entropy = -sum(p * math.log2(p) for p in probs if p > 0)
-        res['geo_entropy'] = raw_entropy / math.log2(max(2, len(cnt)))  # normalized by log2(n_places)
+def convert_to_datetime(value):
+    if isinstance(value, datetime):
+        return value
+    elif isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(value, tz=timezone.utc)
+        except Exception:
+            return None
+    elif isinstance(value, str):
+        try:
+            return parser.parse(value)
+        except Exception:
+            return None
     else:
-        res['geo_entropy'] = 0.0
-
-    # centroid and spread (use coords_list only)
-    coords = [(float(lat), float(lon)) for lat, lon in coords_list if lat is not None and lon is not None] if coords_list else []
-    if coords:
-        mean_lat = sum(lat for lat, _ in coords) / len(coords)
-        mean_lon = sum(lon for _, lon in coords) / len(coords)
-        res['inferred_home_lat'] = round(mean_lat, 6)
-        res['inferred_home_lon'] = round(mean_lon, 6)
-        # compute average distance to centroid
-        dists = [_haversine_km(lat, lon, mean_lat, mean_lon) for lat, lon in coords]
-        res['geo_spread_km'] = float(sum(dists) / len(dists))
-    else:
-        res['geo_spread_km'] = 0.0
-
-    return res
-
+        return None
 
 class GraphGenerationUser(MongoConnection):
     """
@@ -337,7 +213,6 @@ class GraphGenerationUser(MongoConnection):
 
         seen_tweet_ids = set()
 
-        from dateutil import parser  # Import to parse ISO dates
 
         for tweet in tweets:
             tweet_id = tweet.get('id')
@@ -417,7 +292,19 @@ class GraphGenerationUser(MongoConnection):
         src_hash = int(user_id)                 # int — used internally as dict key
         src_node_id = Utils.to_node_id(src_hash) # hex str — used only for CSV output
         latest_user = latest_tweet['user']
-        user_created_at = parser.parse(latest_user.get('created_at'))
+
+        # --- Social Influence Ratio (followers / (followers + friends)) ---
+        followers_raw = latest_user.get('followers_count', 0) or 0
+        friends_raw = latest_user.get('friends_count', 0) or 0
+        den = followers_raw + friends_raw
+        social_influence_ratio = followers_raw / den if den > 0 else 0.0
+
+            
+        # Account date: timestamp of account creation
+        user_created_at = convert_to_datetime(latest_user.get('created_at'))
+        TWITTER_EPOCH = datetime(2006, 3, 21, tzinfo=timezone.utc).timestamp()
+        # Instead of keeping the full timestamp (wasting space for unused dates), we start counting the account age from the TWITTER_EPOCH (March 21, 2006).
+        account_date = round(user_created_at.timestamp() - TWITTER_EPOCH) if user_created_at else 0
 
         # profile url extraction
         profile_url_raw = latest_user.get('url') or ''
@@ -451,13 +338,7 @@ class GraphGenerationUser(MongoConnection):
             except Exception:
                 profile_primary_domain = ''
 
-        # Account age: days between account creation and last observed tweet
-        account_age_days = 0
-        if user_created_at:
-            account_age_days = (latest_tweet['created_at'] - user_created_at).days
-
         first_tweet_ts = min(timestamps) if timestamps else 0.0
-        last_tweet_ts = max(timestamps) if timestamps else 0.0
 
         activation_age_days = 0
         if user_created_at and first_tweet_ts:
@@ -476,21 +357,9 @@ class GraphGenerationUser(MongoConnection):
         daily_score = reg_daily['daily_score']
         daily_cv_log = reg_daily['daily_cv_log'] if reg_daily['daily_cv_log'] is not None else 0.0
 
-        hourly_entropy = hourly_entropy_from_timestamps(timestamps, window_days=90)
-        international_density = international_tweet_density(timestamps, window_days=90)
+        international_density = internal_tweet_density(timestamps, window_days=90)
 
-        profile_geo_enabled = bool(latest_user.get('geo_enabled', False))
-        geo_stats = geo_features_from_tweets(timestamps, coords_list, places_list, profile_geo_enabled, window_days=90)
-
-        geo_enabled_flag = geo_stats['geo_enabled_flag']
-        pct_geotagged = geo_stats['pct_geotagged']
-        n_unique_places = geo_stats['n_unique_places']
-        geo_entropy = geo_stats['geo_entropy']
-        geo_spread_km = geo_stats['geo_spread_km']
-        inferred_home_lat = geo_stats['inferred_home_lat']
-        inferred_home_lon = geo_stats['inferred_home_lon']
-
-
+        profile_geo_enabled = int(latest_user.get('geo_enabled', False))
 
         # ---------------------------------------------------------------------
         # [STUDENTS] NODE FEATURES DEFINITION
@@ -523,41 +392,29 @@ class GraphGenerationUser(MongoConnection):
             'followers':         log1p(latest_user.get('followers_count', 0)),
             'following':         log1p(latest_user.get('friends_count', 0)),
             'verified':          1 if latest_user.get('verified', False) else 0,
-            'account_age_days':  account_age_days,
+            'account_date':      account_date,
             'listed_count':      log1p(latest_user.get('listed_count', 0)),
-            'favourites_count':  latest_user.get('favourites_count', 0),
-            
+            'favourites_count':  log1p(latest_user.get('favourites_count', 0)),
+            'reputation_score': round(social_influence_ratio, 4),
+
             # --- Network/Content Features ---
             'n_unique_hashtags': len(hashtags),
             'n_unique_mentions': len(mention_targets),
 
             # --- Automation / Regularity Features ---
-            'activation_age_days':        activation_age_days,
+            'activation_age_days':        round(math.log1p(activation_age_days), 2),
             'tweet_regularity_score':     log1p(tweet_regularity_score),
             'regularity_reliable':        1 if n_total >= 20 else 0,
             'tweet_avg_interval_seconds': log1p(tweet_avg_interval_seconds),
-            'daily_score':                log1p(daily_score),
-            'daily_cv_log':               log1p(daily_cv_log),
-            'hourly_entropy':             log1p(hourly_entropy),
-            'international_tweet_density': log1p(international_density),
+            'daily_score':                round(daily_score, 2),
+            'daily_cv_log':               round(daily_cv_log, 2),
+            'internal_tweet_density':     round(international_density, 2),
+            'profile_has_url':            profile_has_url,
+            'geo_enabled_flag':           profile_geo_enabled,
 
-            # --- Metadata ---
-            'screen_name':       latest_user.get('screen_name', ''), # Used to resolve mentions
-            'profile_has_url':         profile_has_url,
-            'profile_urls':            '|'.join(profile_urls),   # serializza come stringa per CSV
-            'profile_primary_domain':  profile_primary_domain,
-
-            # --- Geo features ---
-            'geo_enabled_flag':        geo_enabled_flag,
-            'pct_geotagged':           round(pct_geotagged, 4),
-            'n_unique_places':         n_unique_places,
-            'geo_entropy':             round(geo_entropy, 4),
-            'geo_spread_km':           round(geo_spread_km, 2),
-            'inferred_home_lat':       inferred_home_lat,
-            'inferred_home_lon':       inferred_home_lon,
+            # --- Metadata (not features) ---
+            'screen_name':                latest_user.get('screen_name', ''), # Used to resolve mentions
         }
-
-        features['reputation_score'] = reputation_score(features)
 
 
         # Retweet and reply edges — node IDs in hex for compact CSV output
@@ -610,17 +467,13 @@ class GraphGenerationUser(MongoConnection):
             [
                 f['user_node_id'], f['total'], f['retweets'], f['replies'],
                 f['original'], f['likes'], f['followers'], f['following'],
-                f['verified'], f['account_age_days'],
-                f['listed_count'], f['favourites_count'],
+                f['verified'], f['account_date'], f['listed_count'], 
+                f['favourites_count'], f['reputation_score'],
                 f['n_unique_hashtags'], f['n_unique_mentions'],
                 f['activation_age_days'], f['tweet_regularity_score'], 
                 f['regularity_reliable'], f['tweet_avg_interval_seconds'], 
-                f['daily_score'], f['daily_cv_log'], f['hourly_entropy'],
-                f['geo_enabled_flag'], f['pct_geotagged'], f['n_unique_places'],
-                f['geo_entropy'], f['geo_spread_km'], f['inferred_home_lat'], f['inferred_home_lon'],
-                f['international_tweet_density'], f['reputation_score'],
-                f['international_tweet_density'], f['reputation_score'],
-                f['screen_name'], f['profile_has_url'], f['profile_urls'], f['profile_primary_domain'],
+                f['daily_score'], f['daily_cv_log'], f['internal_tweet_density'], 
+                f['profile_has_url'], f['geo_enabled_flag'],
             ]
             for f in user_features_list
         ]
@@ -661,6 +514,7 @@ class GraphGenerationUser(MongoConnection):
         all_mention = []
         
         screen_name_map = {}
+        valid_user_node_ids = set()
 
         # First pass: build the complete screen_name_map from all batches
         self.logger.info("Building complete screen_name map from checkpoints...")
@@ -672,12 +526,18 @@ class GraphGenerationUser(MongoConnection):
             map_file = os.sep.join([batch_path, "screen_name_map"])
             if os.path.exists(map_file):
                 for row in Writer.load_checkpoint_file(map_file):
-                    screen_name_map[row[0].lower()] = int(row[1])
+                    screen_name = row[0].lower()
+                    uid_hash = int(row[1])
+                    screen_name_map[screen_name] = uid_hash
+                    valid_user_node_ids.add(Utils.to_node_id(uid_hash))
 
-        resolved = 0
-        dropped = 0
+        resolved_mention = 0
+        dropped_mention = 0
+        dropped_rt = 0
+        dropped_reply = 0
 
-        # Second pass: read all data and resolve mentions
+        # Second pass: read all data and resolve/filter edges
+        self.logger.info("Filtering and resolving edges...")
         for batch_dir in sorted(os.listdir(checkpoint_dir)):
             batch_path = os.sep.join([checkpoint_dir, batch_dir])
             if not os.path.isdir(batch_path):
@@ -689,11 +549,19 @@ class GraphGenerationUser(MongoConnection):
 
             rt_file = os.sep.join([batch_path, "edges_retweet"])
             if os.path.exists(rt_file):
-                all_rt.extend(Writer.load_checkpoint_file(rt_file))
+                for row in Writer.load_checkpoint_file(rt_file):
+                    if row[1] in valid_user_node_ids:
+                        all_rt.append(row)
+                    else:
+                        dropped_rt += 1
 
             rep_file = os.sep.join([batch_path, "edges_reply"])
             if os.path.exists(rep_file):
-                all_reply.extend(Writer.load_checkpoint_file(rep_file))
+                for row in Writer.load_checkpoint_file(rep_file):
+                    if row[1] in valid_user_node_ids:
+                        all_reply.append(row)
+                    else:
+                        dropped_reply += 1
 
             men_file = os.sep.join([batch_path, "edges_mention_raw"])
             if os.path.exists(men_file):
@@ -702,11 +570,29 @@ class GraphGenerationUser(MongoConnection):
                     dst = screen_name_map.get(screen_name.lower())
                     if dst is not None:
                         all_mention.append((src, Utils.to_node_id(dst), weight))
-                        resolved += 1
+                        resolved_mention += 1
                     else:
-                        dropped += 1  # External user — link dropped
+                        dropped_mention += 1  # External user — link dropped
 
-        # Write final output files
+        # Write CSV headers
+        user_features_header = [
+            'user_node_id', 'total', 'retweets', 'replies', 'original', 'likes', 'followers', 'following',
+            'verified', 'account_date', 'listed_count', 'favourites_count', 'reputation_score',
+            'n_unique_hashtags', 'n_unique_mentions','activation_age_days', 'tweet_regularity_score', 
+            'regularity_reliable', 'tweet_avg_interval_seconds', 'daily_score', 'daily_cv_log', 
+            'internal_tweet_density', 'profile_has_url', 'geo_enabled_flag'
+        ]
+        edge_header = ['src', 'dst', 'weight']
+        mention_header = ['src', 'dst', 'weight']
+        screen_name_map_header = ['screen_name', 'user_id']
+
+        Writer.write_on_csv(os.sep.join([out_dir, "user_features.csv"]), [user_features_header])
+        Writer.write_on_csv(os.sep.join([out_dir, "edges_retweet.csv"]), [edge_header])
+        Writer.write_on_csv(os.sep.join([out_dir, "edges_reply.csv"]), [edge_header])
+        Writer.write_on_csv(os.sep.join([out_dir, "edges_mention.csv"]), [mention_header])
+        Writer.write_on_csv(os.sep.join([out_dir, "screen_name_map.csv"]), [screen_name_map_header])
+
+        # Append data
         Writer.write_on_csv(os.sep.join([out_dir, "user_features.csv"]), all_features)
         Writer.write_on_csv(os.sep.join([out_dir, "edges_retweet.csv"]), all_rt)
         Writer.write_on_csv(os.sep.join([out_dir, "edges_reply.csv"]), all_reply)
@@ -723,16 +609,17 @@ class GraphGenerationUser(MongoConnection):
                 self.logger.warning(f"Failed to delete {checkpoint_dir}: {e}")
 
         self.logger.info(
-            f"Merge complete. "
-            f"Mention edges: {resolved} resolved, {dropped} dropped (external users). "
-            f"Output in {out_dir}"
+            f"Merge complete. Output in {out_dir}\n"
+            f"  Mentions: {resolved_mention} resolved, {dropped_mention} dropped (external users).\n"
+            f"  Retweets: {len(all_rt)} kept, {dropped_rt} dropped (external users).\n"
+            f"  Replies:  {len(all_reply)} kept, {dropped_reply} dropped (external users)."
         )
 
     # ─────────────────────────────────────────────────────────────────────────
     # MAIN ENTRY POINT
     # ─────────────────────────────────────────────────────────────────────────
 
-    def run(self, checkpoint_every=500):
+    def run(self, checkpoint_every=500, max_users=None):
         """
         Main entry point. Connects to MongoDB and streams all tweets sorted
         by user.id through a cursor, processing one user at a time.
@@ -742,7 +629,9 @@ class GraphGenerationUser(MongoConnection):
         Checkpoints are written to disk every `checkpoint_every` users.
 
         :param checkpoint_every: Number of users to process before writing
-                                 a checkpoint to disk (default: 5000).
+                                 a checkpoint to disk (default: 500).
+        :param max_users: Optional hard limit on the number of users to extract.
+                          If set (e.g., 500), extraction stops early.
         """
         client = self.connect()
         col = self.get_db()[self.get_collection()]
@@ -794,7 +683,9 @@ class GraphGenerationUser(MongoConnection):
                 )
                 features_list, edges_rt, edges_reply, mention_raw, screen_names_list = [], [], [], [], []
                 batch_id += 1
-
+            if max_users is not None and user_count >= max_users:
+                self.logger.info(f"Reached max_users limit ({max_users}). Stopping extraction early.")
+                break
         # Save remaining data
         if features_list:
             self.save_checkpoint(
