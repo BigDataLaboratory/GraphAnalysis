@@ -201,6 +201,12 @@ class GraphGenerationUser(MongoConnection):
         n_retweets = 0
         n_replies = 0
         n_original = 0
+        n_sensitive = 0
+        n_mobile = 0
+        n_web = 0
+        n_news_manager = 0
+        n_bot_api = 0
+        n_received_retweets = 0
         latest_tweet = None
         hashtags = set()
         timestamps = []
@@ -226,6 +232,69 @@ class GraphGenerationUser(MongoConnection):
 
             n_total += 1
             timestamps.append(tweet['created_at'].timestamp())
+
+            # --- source classification (Mobile / Web / News Manager / Bot/API) ---
+            try:
+                src_raw = tweet.get('source') or ''
+                # source può essere HTML come: '<a href="...">Twitter for iPhone</a>'
+                # estrai il testo visibile rimuovendo tag HTML semplicemente
+                if isinstance(src_raw, str):
+                    # rimuove tag <...> lasciando il testo interno
+                    import re
+                    m = re.sub(r'<.*?>', '', src_raw).strip().lower()
+                else:
+                    m = str(src_raw).lower()
+
+                # keyword-based classification (estendibile)
+                if any(k in m for k in ['iphone', 'android', 'mobile', 'twitter for iphone', 'twitter for android', 'twitter for mobile']):
+                    n_mobile += 1
+                elif any(k in m for k in ['web', 'twitter web', 'twitter web app', 'twitter web client', 'web client']):
+                    n_web += 1
+                elif any(k in m for k in ['news manager', 'newsmanager', 'meta business', 'facebook business', 'business suite', 'creator studio']):
+                    n_news_manager += 1
+                elif any(k in m for k in ['api', 'bot', 'ifttt', 'zapier', 'dlvr.it', 'buffer', 'hootsuite', 'tweetdeck', 'socialoomph', 'sprout', 'socialflow']):
+                    # consider TweetDeck and automation tools as Bot/API by default
+                    n_bot_api += 1
+                else:
+                    # fallback: if contains 'tweetdeck' treat as bot/api, if contains 'manager' treat as news manager
+                    if 'tweetdeck' in m:
+                        n_bot_api += 1
+                    elif 'manager' in m:
+                        n_news_manager += 1
+                    else:
+                        # unknown: count as web if contains 'web', else mobile if contains 'mobile', else bot/api as conservative
+                        if 'web' in m:
+                            n_web += 1
+                        elif 'mobile' in m:
+                            n_mobile += 1
+                        else:
+                            n_bot_api += 1
+            except Exception:
+                # non blocchiamo l'estrazione per formati inattesi
+                pass
+            # --- end source classification ---
+
+            # --- sensitive flag detection ---
+            # Twitter fields that may indicate sensitive content:
+            # - tweet.get('possibly_sensitive') (boolean)
+            # - tweet.get('sensitive') (boolean)
+            # - media entities: tweet.get('extended_entities', {}).get('media', []) each media may have 'possibly_sensitive'
+            try:
+                if tweet.get('possibly_sensitive') is True or tweet.get('sensitive') is True:
+                    n_sensitive += 1
+                else:
+                    # check media-level flags
+                    ext = tweet.get('extended_entities') or tweet.get('entities') or {}
+                    media_list = ext.get('media', []) if isinstance(ext, dict) else []
+                    for m in media_list:
+                        if isinstance(m, dict) and m.get('possibly_sensitive') is True:
+                            n_sensitive += 1
+                            break
+            except Exception:
+                # be robust to unexpected tweet shapes
+                pass
+            # --- end sensitive detection ---
+
 
             # --- geotag extraction ---
             # coordinates: Twitter may store as tweet['coordinates']['coordinates'] = [lon, lat]
@@ -261,6 +330,15 @@ class GraphGenerationUser(MongoConnection):
                     reply_targets[reply_uid] += 1
             else:
                 n_original += 1
+            
+            # --- received retweets accumulation ---
+            try:
+                if not is_retweet:
+                    rc = tweet.get('retweet_count', 0) or 0
+                    _received_retweets += int(rc)
+            except Exception:
+                pass
+            # --- end received retweets accumulation ---
 
             # Mentions — stored as screen_names (resolved later)
             if not is_retweet:
@@ -361,6 +439,42 @@ class GraphGenerationUser(MongoConnection):
 
         profile_geo_enabled = int(latest_user.get('geo_enabled', False))
 
+        # Sensitive content metrics
+        sensitive_count = int(n_sensitive)
+        sensitive_rate = float(sensitive_count) / n_total if n_total > 0 else 0.0
+
+        # Source ratios
+        mobile_count = int(n_mobile)
+        web_count = int(n_web)
+        news_manager_count = int(n_news_manager)
+        bot_api_count = int(n_bot_api)
+
+        mobile_ratio = mobile_count / n_total if n_total > 0 else 0.0
+        web_ratio = web_count / n_total if n_total > 0 else 0.0
+        news_manager_ratio = news_manager_count / n_total if n_total > 0 else 0.0
+        bot_api_ratio = bot_api_count / n_total if n_total > 0 else 0.0
+
+        # Source entropy (Shannon) normalized to [0,1] using log2(4)
+        try:
+            counts = [mobile_count, web_count, news_manager_count, bot_api_count]
+            total_counts = sum(counts)
+            if total_counts > 0:
+                probs = [c / total_counts for c in counts if c > 0]
+                raw_entropy = -sum(p * math.log2(p) for p in probs)
+                source_entropy = raw_entropy / math.log2(4)  # normalize by log2(4)
+            else:
+                source_entropy = 0.0
+        except Exception:
+            source_entropy = 0.0
+
+        # Received retweets metrics
+        received_retweets_total = int(n_received_retweets)
+        received_retweets_per_tweet = float(received_retweets_total) / n_total if n_total > 0 else 0.0
+
+        # Optionally compute a "dominance" metric (max share) if useful:
+        max_source_share = max(counts) / total_counts if total_counts > 0 else 0.0
+
+
         # ---------------------------------------------------------------------
         # [STUDENTS] NODE FEATURES DEFINITION
         # ---------------------------------------------------------------------
@@ -400,6 +514,8 @@ class GraphGenerationUser(MongoConnection):
             # --- Network/Content Features ---
             'n_unique_hashtags': len(hashtags),
             'n_unique_mentions': len(mention_targets),
+            'received_retweets_total':        received_retweets_total,
+            'received_retweets_per_tweet':    round(received_retweets_per_tweet, 4),
 
             # --- Automation / Regularity Features ---
             'activation_age_days':        round(math.log1p(activation_age_days), 2),
@@ -414,6 +530,22 @@ class GraphGenerationUser(MongoConnection):
 
             # --- Metadata (not features) ---
             'screen_name':                latest_user.get('screen_name', ''), # Used to resolve mentions
+            
+            # Sensitive content metrics
+            'sensitive_count':            sensitive_count,
+            'sensitive_rate':             sensitive_rate,
+
+            # Source counts and ratios
+            'mobile_count':            mobile_count,
+            'mobile_ratio':            round(mobile_ratio, 4),
+            'web_count':               web_count,
+            'web_ratio':               round(web_ratio, 4),
+            'news_manager_count':      news_manager_count,
+            'news_manager_ratio':      round(news_manager_ratio, 4),
+            'bot_api_count':           bot_api_count,
+            'bot_api_ratio':           round(bot_api_ratio, 4),
+            'source_entropy':           round(source_entropy, 4),
+            'source_max_share':         round(max_source_share, 4),
         }
 
 
@@ -470,10 +602,18 @@ class GraphGenerationUser(MongoConnection):
                 f['verified'], f['account_date'], f['listed_count'],
                 f['favourites_count'], f['reputation_score'],
                 f['n_unique_hashtags'], f['n_unique_mentions'],
+                f['received_retweets_total'], f['received_retweets_per_tweet'],
+                f['activation_age_days'],
                 f['activation_age_days'], f['tweet_regularity_score'], 
                 f['regularity_reliable'], f['tweet_avg_interval_seconds'], 
                 f['daily_score'], f['daily_cv_log'], f['internal_tweet_density'], 
                 f['profile_has_url'], f['geo_enabled_flag'],
+                f['sensitive_count'], f['sensitive_rate'],
+                f['mobile_count'], f['mobile_ratio'],
+                f['web_count'], f['web_ratio'],
+                f['news_manager_count'], f['news_manager_ratio'],
+                f['bot_api_count'], f['bot_api_ratio'],
+                f['source_entropy'], f['source_max_share']
             ]
             for f in user_features_list
         ]
@@ -578,9 +718,12 @@ class GraphGenerationUser(MongoConnection):
         user_features_header = [
             'user_node_id', 'total', 'retweets', 'replies', 'original', 'likes', 'followers', 'following',
             'verified', 'account_date', 'listed_count', 'favourites_count', 'reputation_score',
-            'n_unique_hashtags', 'n_unique_mentions','activation_age_days', 'tweet_regularity_score', 
+            'n_unique_hashtags', 'n_unique_mentions', 'received_retweets_total', 'received_retweets_per_tweet',
+            'activation_age_days', 'activation_age_days', 'tweet_regularity_score', 
             'regularity_reliable', 'tweet_avg_interval_seconds', 'daily_score', 'daily_cv_log', 
-            'internal_tweet_density', 'profile_has_url', 'geo_enabled_flag'
+            'internal_tweet_density', 'profile_has_url', 'geo_enabled_flag', 'sensitive_count', 'sensitive_rate',
+            'mobile_count', 'mobile_ratio', 'web_count', 'web_ratio',
+            'news_manager_count', 'news_manager_ratio', 'bot_api_count', 'bot_api_ratio', 'source_entropy', 'source_max_share'
         ]
         edge_header = ['src', 'dst', 'weight']
         mention_header = ['src', 'dst', 'weight']
