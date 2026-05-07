@@ -400,7 +400,7 @@ class GraphGenerationUser(MongoConnection):
             'account_date':      account_date,
             'listed_count':      log1p(latest_user.get('listed_count', 0)),
             'favourites_count':  log1p(latest_user.get('favourites_count', 0)),
-            'reputation_score': round(social_influence_ratio, 4),
+            'reputation_score': round(social_influence_ratio, 2),
 
             # --- Network/Content Features ---
             'n_unique_hashtags': len(hashtags),
