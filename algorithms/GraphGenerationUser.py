@@ -117,11 +117,6 @@ def internal_tweet_density(timestamps, window_days=90):
     return raw_entropy / math.log2(24)
 
 
-def reputation_score(followers_count, friends_count):
-    # TODO Not implemented 
-    return 0
-
-
 def convert_to_datetime(value):
     if isinstance(value, datetime):
         return value
