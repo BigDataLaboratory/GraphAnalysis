@@ -23,3 +23,18 @@ To run tests, execute this command:
 ```bash
 python .\tests\test_GraphGenerationUser.py
 ```
+
+## Container
+Step 1: Build the images
+```bash
+podman build -t graph-analysis -f ./docker/Dockerfile .
+```
+
+Step: 2: Run the containers
+```bash
+podman run \
+  -v ./resources:/app/resources:ro \
+  -v ./output:/app/output \
+  -v ./properties:/app/properties \
+  graph-analysis
+```

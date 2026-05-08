@@ -601,6 +601,17 @@ class GraphGenerationUser(MongoConnection):
         map_rows = [(sn, Utils.to_node_id(uid)) for sn, uid in screen_name_map.items()]
         Writer.write_on_csv(os.sep.join([out_dir, "screen_name_map.csv"]), map_rows)
 
+        # Metadata file useful for MLFlow, to get the name of the used collection
+        import json
+        metadata = {
+            "collection": self.get_collection(),
+            "date": datetime.now(timezone.utc).isoformat(),
+            "run_id": self.id,
+            "users_processed": len(valid_user_node_ids)
+        }
+        with open(os.sep.join([out_dir, "metadata.json"]), "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=4)
+
         if self.delete_tmp_after_merge:
             self.logger.info(f"Deleting temporary checkpoint directory: {checkpoint_dir}")
             try:
