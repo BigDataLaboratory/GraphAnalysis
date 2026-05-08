@@ -7,6 +7,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pymongo import ASCENDING
 from dateutil import parser  # Import to parse ISO dates
+import re
 
 import numpy as np
 import sys
@@ -17,6 +18,8 @@ from Utils.Writer import Writer
 from algorithms.MongoConnection import MongoConnection
 import algorithms.mongoQueries as mongoQueries
 
+
+_HTML_TAG_RE = re.compile(r'<.*?>')
 
 def tweet_regularity_score_from_timestamps(timestamps):
     """
@@ -116,6 +119,30 @@ def internal_tweet_density(timestamps, window_days=90):
     raw_entropy = -sum(p * math.log2(p) for p in probs if p > 0)
     return raw_entropy / math.log2(24)
 
+def classify_source(src_raw: str) -> str:
+    """
+    Classifies the tweet source into one of: 'mobile', 'web', 'news_manager', 'bot_api'.
+    """
+    if not isinstance(src_raw, str):
+        return 'bot_api'
+
+    m = _HTML_TAG_RE.sub('', src_raw).strip().lower()
+
+    # these values are based on this query: db.collection.distinct('source')
+    MOBILE = ['iphone', 'android', 'ipad', 'mobile', 'twitter for mac']
+    WEB = ['web app', 'web client', 'twitter web']
+    NEWS_MANAGER = [
+        'postpickr', 'hootsuite', 'wordpress', 'blog2social',
+        'dlvr.it', 'dlvrit', 'ifttt', 'instagram'
+    ]
+
+    if any(k in m for k in MOBILE):
+        return 'mobile'
+    if any(k in m for k in WEB):
+        return 'web'
+    if any(k in m for k in NEWS_MANAGER):
+        return 'news_manager'
+    return 'bot_api'  # TweetDeck, API, inconnus → bot/api par défaut
 
 def convert_to_datetime(value):
     if isinstance(value, datetime):
@@ -197,6 +224,10 @@ class GraphGenerationUser(MongoConnection):
         :return: (features_dict, edges_retweet, edges_reply, mention_edges_raw)
                  Returns (None, [], [], []) if the tweet list is empty.
         """
+
+        ##############################################################################
+        ### NODE FEATURES VARIABLES ##################################################
+        ##############################################################################
         n_total = 0
         n_retweets = 0
         n_replies = 0
@@ -206,21 +237,26 @@ class GraphGenerationUser(MongoConnection):
         n_web = 0
         n_news_manager = 0
         n_bot_api = 0
-        n_received_retweets = 0
+        n_other = 0
         latest_tweet = None
         hashtags = set()
         timestamps = []
         coords_list = []
         places_list = []
 
+        ##############################################################################
+        ### EDGE FEATURES VARIABLES ##################################################
+        ##############################################################################
         retweet_targets = defaultdict(int)   # dst_user_id (int) → interaction count
         reply_targets = defaultdict(int)     # dst_user_id (int) → interaction count
         mention_targets = defaultdict(int)   # screen_name (str) → interaction count
 
         seen_tweet_ids = set()
 
-
         for tweet in tweets:
+            ##########################################################################
+            ### NODE FEATURES COMPUTATION ############################################
+            ##########################################################################
             tweet_id = tweet.get('id')
             if tweet_id in seen_tweet_ids:
                 continue
@@ -234,67 +270,19 @@ class GraphGenerationUser(MongoConnection):
             timestamps.append(tweet['created_at'].timestamp())
 
             # --- source classification (Mobile / Web / News Manager / Bot/API) ---
-            try:
-                src_raw = tweet.get('source') or ''
-                # source può essere HTML come: '<a href="...">Twitter for iPhone</a>'
-                # estrai il testo visibile rimuovendo tag HTML semplicemente
-                if isinstance(src_raw, str):
-                    # rimuove tag <...> lasciando il testo interno
-                    import re
-                    m = re.sub(r'<.*?>', '', src_raw).strip().lower()
-                else:
-                    m = str(src_raw).lower()
+            source_class = classify_source(tweet.get('source', ''))
+            if source_class == 'mobile':
+                n_mobile += 1
+            elif source_class == 'web':
+                n_web += 1
+            elif source_class == 'automation':
+                n_bot_api += 1
+            else:
+                n_other += 1
 
-                # keyword-based classification (estendibile)
-                if any(k in m for k in ['iphone', 'android', 'mobile', 'twitter for iphone', 'twitter for android', 'twitter for mobile']):
-                    n_mobile += 1
-                elif any(k in m for k in ['web', 'twitter web', 'twitter web app', 'twitter web client', 'web client']):
-                    n_web += 1
-                elif any(k in m for k in ['news manager', 'newsmanager', 'meta business', 'facebook business', 'business suite', 'creator studio']):
-                    n_news_manager += 1
-                elif any(k in m for k in ['api', 'bot', 'ifttt', 'zapier', 'dlvr.it', 'buffer', 'hootsuite', 'tweetdeck', 'socialoomph', 'sprout', 'socialflow']):
-                    # consider TweetDeck and automation tools as Bot/API by default
-                    n_bot_api += 1
-                else:
-                    # fallback: if contains 'tweetdeck' treat as bot/api, if contains 'manager' treat as news manager
-                    if 'tweetdeck' in m:
-                        n_bot_api += 1
-                    elif 'manager' in m:
-                        n_news_manager += 1
-                    else:
-                        # unknown: count as web if contains 'web', else mobile if contains 'mobile', else bot/api as conservative
-                        if 'web' in m:
-                            n_web += 1
-                        elif 'mobile' in m:
-                            n_mobile += 1
-                        else:
-                            n_bot_api += 1
-            except Exception:
-                # non blocchiamo l'estrazione per formati inattesi
-                pass
-            # --- end source classification ---
-
-            # --- sensitive flag detection ---
-            # Twitter fields that may indicate sensitive content:
-            # - tweet.get('possibly_sensitive') (boolean)
-            # - tweet.get('sensitive') (boolean)
-            # - media entities: tweet.get('extended_entities', {}).get('media', []) each media may have 'possibly_sensitive'
-            try:
-                if tweet.get('possibly_sensitive') is True or tweet.get('sensitive') is True:
-                    n_sensitive += 1
-                else:
-                    # check media-level flags
-                    ext = tweet.get('extended_entities') or tweet.get('entities') or {}
-                    media_list = ext.get('media', []) if isinstance(ext, dict) else []
-                    for m in media_list:
-                        if isinstance(m, dict) and m.get('possibly_sensitive') is True:
-                            n_sensitive += 1
-                            break
-            except Exception:
-                # be robust to unexpected tweet shapes
-                pass
-            # --- end sensitive detection ---
-
+            # Sensitive content flag
+            if tweet.get('possibly_sensitive') is True:
+                n_sensitive += 1
 
             # --- geotag extraction ---
             # coordinates: Twitter may store as tweet['coordinates']['coordinates'] = [lon, lat]
@@ -319,38 +307,6 @@ class GraphGenerationUser(MongoConnection):
             # In the dataset, -1 indicates the absence of a reply.
             is_reply = tweet.get('in_reply_to_status_id') not in (None, -1)
 
-            if is_retweet:
-                n_retweets += 1
-                rt_uid = tweet['retweeted_status']['user']['id']
-                retweet_targets[rt_uid] += 1
-            elif is_reply:
-                n_replies += 1
-                reply_uid = tweet.get('in_reply_to_user_id')
-                if reply_uid and reply_uid != -1:
-                    reply_targets[reply_uid] += 1
-            else:
-                n_original += 1
-            
-            # --- received retweets accumulation ---
-            try:
-                if not is_retweet:
-                    rc = tweet.get('retweet_count', 0) or 0
-                    _received_retweets += int(rc)
-            except Exception:
-                pass
-            # --- end received retweets accumulation ---
-
-            # Mentions — stored as screen_names (resolved later)
-            if not is_retweet:
-                raw_mentions = tweet.get('userMentionEntities', '')
-                if isinstance(raw_mentions, str) and raw_mentions.strip():
-                    for mn in raw_mentions.split('|'):
-                        mn = mn.strip().lower()
-                        
-                        # If the tweet is a retweet, ignore the mentions.
-                        # By ignoring the mentions, we avoid counting false interactions.
-                        if mn:
-                            mention_targets[mn] += 1
 
             # Unique hashtags
             raw_ht = tweet.get('hashtagEntities', '')
@@ -364,9 +320,39 @@ class GraphGenerationUser(MongoConnection):
             if latest_tweet is None or tweet['created_at'] > latest_tweet['created_at']:
                 latest_tweet = tweet
 
+            ##########################################################################
+            ### EDGE FEATURES COMPUTATION ############################################
+            ##########################################################################
+            if is_retweet:
+                n_retweets += 1
+                rt_uid = tweet['retweeted_status']['user']['id']
+                retweet_targets[rt_uid] += 1
+            elif is_reply:
+                n_replies += 1
+                reply_uid = tweet.get('in_reply_to_user_id')
+                if reply_uid and reply_uid != -1:
+                    reply_targets[reply_uid] += 1
+            else:
+                n_original += 1
+
+            # Mentions — stored as screen_names (resolved later)
+            if not is_retweet:
+                raw_mentions = tweet.get('userMentionEntities', '')
+                if isinstance(raw_mentions, str) and raw_mentions.strip():
+                    for mn in raw_mentions.split('|'):
+                        mn = mn.strip().lower()
+                        
+                        # If the tweet is a retweet, ignore the mentions.
+                        # By ignoring the mentions, we avoid counting false interactions.
+                        if mn:
+                            mention_targets[mn] += 1
+
         if latest_tweet is None:
             return None, [], [], []
 
+        ##########################################################################
+        ### NODE FEATURES OBJECT CREATION ########################################
+        ##########################################################################
         src_hash = int(user_id)                 # int — used internally as dict key
         src_node_id = Utils.to_node_id(src_hash) # hex str — used only for CSV output
         latest_user = latest_tweet['user']
@@ -377,7 +363,6 @@ class GraphGenerationUser(MongoConnection):
         den = followers_raw + friends_raw
         social_influence_ratio = followers_raw / den if den > 0 else 0.0
 
-            
         # Account date: timestamp of account creation
         user_created_at = convert_to_datetime(latest_user.get('created_at'))
         TWITTER_EPOCH = datetime(2006, 3, 21, tzinfo=timezone.utc).timestamp()
@@ -385,47 +370,18 @@ class GraphGenerationUser(MongoConnection):
         account_date = round(user_created_at.timestamp() - TWITTER_EPOCH) if user_created_at else 0
 
         # profile url extraction
-        profile_url_raw = latest_user.get('url') or ''
-        entities_urls = []
-        try:
-            entities_urls = latest_user.get('entities', {}).get('url', {}).get('urls', []) or []
-        except Exception:
-            entities_urls = []
-
-        # prefer expanded_url if available
-        profile_urls = []
-        if profile_url_raw:
-            profile_urls.append(profile_url_raw)
-        for u in entities_urls:
-            if isinstance(u, dict):
-                expanded = u.get('expanded_url') or u.get('url')
-                if expanded:
-                    profile_urls.append(expanded)
-
-
-        # normalize and dedupe
-        profile_urls = list(dict.fromkeys([str(x).strip() for x in profile_urls if x]))
-        profile_has_url = 1 if profile_urls else 0
-        profile_primary_domain = ''
-        if profile_has_url:
-            # extract domain simply
-            try:
-                from urllib.parse import urlparse
-                parsed = urlparse(profile_urls[0])
-                profile_primary_domain = parsed.netloc.lower()
-            except Exception:
-                profile_primary_domain = ''
+        user_profile_has_url = latest_user.get('url') is not None
 
         first_tweet_ts = min(timestamps) if timestamps else 0.0
 
-        activation_age_days = 0
+        activation_age = 0
         if user_created_at and first_tweet_ts:
             try:
                 first_dt = datetime.fromtimestamp(first_tweet_ts, tz=timezone.utc)
                 uca = user_created_at if user_created_at.tzinfo else user_created_at.replace(tzinfo=timezone.utc)
-                activation_age_days = max(0, (first_dt - uca).days)
+                activation_age = max(0, (first_dt - uca).total_seconds())
             except Exception:
-                activation_age_days = 0
+                activation_age = 0
 
         reg_iti = tweet_regularity_score_from_timestamps(timestamps)
         tweet_regularity_score = reg_iti['regularity_score']
@@ -444,19 +400,14 @@ class GraphGenerationUser(MongoConnection):
         sensitive_rate = float(sensitive_count) / n_total if n_total > 0 else 0.0
 
         # Source ratios
-        mobile_count = int(n_mobile)
-        web_count = int(n_web)
-        news_manager_count = int(n_news_manager)
-        bot_api_count = int(n_bot_api)
-
-        mobile_ratio = mobile_count / n_total if n_total > 0 else 0.0
-        web_ratio = web_count / n_total if n_total > 0 else 0.0
-        news_manager_ratio = news_manager_count / n_total if n_total > 0 else 0.0
-        bot_api_ratio = bot_api_count / n_total if n_total > 0 else 0.0
+        mobile_ratio = n_mobile / n_total if n_total > 0 else 0.0
+        web_ratio = n_web / n_total if n_total > 0 else 0.0
+        news_manager_ratio = n_news_manager / n_total if n_total > 0 else 0.0
+        bot_api_ratio = n_bot_api / n_total if n_total > 0 else 0.0
 
         # Source entropy (Shannon) normalized to [0,1] using log2(4)
         try:
-            counts = [mobile_count, web_count, news_manager_count, bot_api_count]
+            counts = [n_mobile, n_web, n_news_manager, n_bot_api]
             total_counts = sum(counts)
             if total_counts > 0:
                 probs = [c / total_counts for c in counts if c > 0]
@@ -467,27 +418,6 @@ class GraphGenerationUser(MongoConnection):
         except Exception:
             source_entropy = 0.0
 
-        # Received retweets metrics
-        received_retweets_total = int(n_received_retweets)
-        received_retweets_per_tweet = float(received_retweets_total) / n_total if n_total > 0 else 0.0
-
-        # Optionally compute a "dominance" metric (max share) if useful:
-        max_source_share = max(counts) / total_counts if total_counts > 0 else 0.0
-
-
-        # ---------------------------------------------------------------------
-        # [STUDENTS] NODE FEATURES DEFINITION
-        # ---------------------------------------------------------------------
-        # This dictionary defines the attributes (features) that will be 
-        # assigned to each user node in the final graph. 
-        #
-        # If you want to compute new features for your GNN 
-        # (e.g., average tweet length, sentiment score, activity frequency), 
-        # you need to:
-        # 1. Compute the value in the loop above (lines 108-144).
-        # 2. Add the new feature as a key-value pair in this dictionary.
-        # 3. Update the CSV column headers in `save_checkpoint` (around line 265).
-        # ---------------------------------------------------------------------
         def log1p(x):
             return round(math.log1p(x), 2)
 
@@ -514,18 +444,16 @@ class GraphGenerationUser(MongoConnection):
             # --- Network/Content Features ---
             'n_unique_hashtags': len(hashtags),
             'n_unique_mentions': len(mention_targets),
-            'received_retweets_total':        received_retweets_total,
-            'received_retweets_per_tweet':    round(received_retweets_per_tweet, 4),
 
             # --- Automation / Regularity Features ---
-            'activation_age_days':        round(math.log1p(activation_age_days), 2),
+            'activation_age':             log1p(activation_age),
             'tweet_regularity_score':     log1p(tweet_regularity_score),
             'regularity_reliable':        1 if n_total >= 20 else 0,
             'tweet_avg_interval_seconds': log1p(tweet_avg_interval_seconds),
             'daily_score':                round(daily_score, 2),
             'daily_cv_log':               round(daily_cv_log, 2),
             'internal_tweet_density':     round(internal_density, 2),
-            'profile_has_url':            profile_has_url,
+            'profile_has_url':            int(user_profile_has_url),
             'geo_enabled_flag':           profile_geo_enabled,
 
             # --- Metadata (not features) ---
@@ -536,36 +464,46 @@ class GraphGenerationUser(MongoConnection):
             'sensitive_rate':             sensitive_rate,
 
             # Source counts and ratios
-            'mobile_count':            mobile_count,
             'mobile_ratio':            round(mobile_ratio, 4),
-            'web_count':               web_count,
             'web_ratio':               round(web_ratio, 4),
-            'news_manager_count':      news_manager_count,
             'news_manager_ratio':      round(news_manager_ratio, 4),
-            'bot_api_count':           bot_api_count,
             'bot_api_ratio':           round(bot_api_ratio, 4),
             'source_entropy':           round(source_entropy, 4),
-            'source_max_share':         round(max_source_share, 4),
         }
 
+        ##########################################################################
+        ### EDGE FEATURES OBJECTS CREATION #######################################
+        ##########################################################################
 
         # Retweet and reply edges — node IDs in hex for compact CSV output
-        edges_retweet = [
-            (src_node_id, Utils.to_node_id(int(dst_uid)), weight)
+        edges_retweet_features = [
+            (
+                src_node_id,                        # source node ID (hex string)
+                Utils.to_node_id(int(dst_uid)),     # destination node ID (hex string)
+                weight                              # retweet count (weight)
+            )
             for dst_uid, weight in retweet_targets.items()
         ]
-        edges_reply = [
-            (src_node_id, Utils.to_node_id(int(dst_uid)), weight)
+        edges_reply_features = [
+            (
+                src_node_id,                        # source node ID (hex string)
+                Utils.to_node_id(int(dst_uid)),     # destination node ID (hex string)
+                weight                              # reply count (weight)
+            )
             for dst_uid, weight in reply_targets.items()
         ]
 
         # Mention edges — src in hex, screen_name kept as-is (resolved at merge time)
-        mention_edges_raw = [
-            (src_node_id, screen_name, weight)
+        mention_edges_raw_features = [
+            (
+                src_node_id,                        # source node ID (hex string)
+                screen_name,                        # destination screen_name (to be resolved later)
+                weight                              # mention count (weight)
+             )
             for screen_name, weight in mention_targets.items()
         ]
 
-        return features, edges_retweet, edges_reply, mention_edges_raw
+        return features, edges_retweet_features, edges_reply_features, mention_edges_raw_features
 
     # ─────────────────────────────────────────────────────────────────────────
     # CHECKPOINT I/O
@@ -602,18 +540,12 @@ class GraphGenerationUser(MongoConnection):
                 f['verified'], f['account_date'], f['listed_count'],
                 f['favourites_count'], f['reputation_score'],
                 f['n_unique_hashtags'], f['n_unique_mentions'],
-                f['received_retweets_total'], f['received_retweets_per_tweet'],
-                f['activation_age_days'],
-                f['activation_age_days'], f['tweet_regularity_score'], 
+                f['activation_age'], f['tweet_regularity_score'], 
                 f['regularity_reliable'], f['tweet_avg_interval_seconds'], 
                 f['daily_score'], f['daily_cv_log'], f['internal_tweet_density'], 
-                f['profile_has_url'], f['geo_enabled_flag'],
-                f['sensitive_count'], f['sensitive_rate'],
-                f['mobile_count'], f['mobile_ratio'],
-                f['web_count'], f['web_ratio'],
-                f['news_manager_count'], f['news_manager_ratio'],
-                f['bot_api_count'], f['bot_api_ratio'],
-                f['source_entropy'], f['source_max_share']
+                f['profile_has_url'], f['geo_enabled_flag'], f['sensitive_rate'],
+                f['mobile_ratio'],f['web_ratio'],f['news_manager_ratio'], 
+                f['bot_api_ratio'],f['source_entropy'],
             ]
             for f in user_features_list
         ]
@@ -676,6 +608,11 @@ class GraphGenerationUser(MongoConnection):
         dropped_rt = 0
         dropped_reply = 0
 
+        # --- In-degree tracking ---
+        received_retweets = defaultdict(int)
+        received_replies = defaultdict(int)
+        received_mentions = defaultdict(int)
+
         # Second pass: read all data and resolve/filter edges
         self.logger.info("Filtering and resolving edges...")
         for batch_dir in sorted(os.listdir(checkpoint_dir)):
@@ -692,6 +629,7 @@ class GraphGenerationUser(MongoConnection):
                 for row in Writer.load_checkpoint_file(rt_file):
                     if row[1] in valid_user_node_ids:
                         all_rt.append(row)
+                        received_retweets[row[1]] += int(float(row[2]))
                     else:
                         dropped_rt += 1
 
@@ -700,6 +638,7 @@ class GraphGenerationUser(MongoConnection):
                 for row in Writer.load_checkpoint_file(rep_file):
                     if row[1] in valid_user_node_ids:
                         all_reply.append(row)
+                        received_replies[row[1]] += int(float(row[2]))
                     else:
                         dropped_reply += 1
 
@@ -709,21 +648,33 @@ class GraphGenerationUser(MongoConnection):
                     src, screen_name, weight = row[0], row[1], row[2]
                     dst = screen_name_map.get(screen_name.lower())
                     if dst is not None:
-                        all_mention.append((src, Utils.to_node_id(dst), weight))
+                        dst_node_id = Utils.to_node_id(dst)
+                        all_mention.append((src, dst_node_id, weight))
+                        received_mentions[dst_node_id] += int(float(weight))
                         resolved_mention += 1
                     else:
                         dropped_mention += 1  # External user — link dropped
+
+        # Inject computed incoming degrees into feature rows
+        for row in all_features:
+            uid = row[0]
+            rt_count = received_retweets.get(uid, 0)
+            rep_count = received_replies.get(uid, 0)
+            men_count = received_mentions.get(uid, 0)
+            
+            row.insert(15, rt_count)
+            row.insert(16, rep_count)
+            row.insert(17, men_count)
 
         # Write CSV headers
         user_features_header = [
             'user_node_id', 'total', 'retweets', 'replies', 'original', 'likes', 'followers', 'following',
             'verified', 'account_date', 'listed_count', 'favourites_count', 'reputation_score',
-            'n_unique_hashtags', 'n_unique_mentions', 'received_retweets_total', 'received_retweets_per_tweet',
-            'activation_age_days', 'activation_age_days', 'tweet_regularity_score', 
-            'regularity_reliable', 'tweet_avg_interval_seconds', 'daily_score', 'daily_cv_log', 
-            'internal_tweet_density', 'profile_has_url', 'geo_enabled_flag', 'sensitive_count', 'sensitive_rate',
-            'mobile_count', 'mobile_ratio', 'web_count', 'web_ratio',
-            'news_manager_count', 'news_manager_ratio', 'bot_api_count', 'bot_api_ratio', 'source_entropy', 'source_max_share'
+            'n_unique_hashtags', 'n_unique_mentions', 'received_retweets_total', 'received_reply_total', 
+            'received_mention_total', 'activation_age', 'tweet_regularity_score', 'regularity_reliable', 
+            'tweet_avg_interval_seconds', 'daily_score', 'daily_cv_log', 'internal_tweet_density', 
+            'profile_has_url', 'geo_enabled_flag', 'sensitive_rate', 'mobile_ratio', 'web_ratio', 
+            'news_manager_ratio', 'bot_api_ratio', 'source_entropy'
         ]
         edge_header = ['src', 'dst', 'weight']
         mention_header = ['src', 'dst', 'weight']

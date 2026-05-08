@@ -20,6 +20,9 @@ class GraphAnalysis:
         self.parameters = parameters
 
     def run(self):
+        import time
+        start_time = time.time()
+
         if self.parameters.do_graph_generation:
             p = self.parameters
             is_user_oriented_graph = p.do_retweet_graph or p.do_response_graph or p.do_mention_graph
@@ -272,5 +275,12 @@ class GraphAnalysis:
             Utils.persist_to_file(di, self.parameters.docs_file_path)
             tm.save(self.parameters.model_path, serialization=self.parameters.model_serialization, save_ctfidf=True)
             """
+
+        end_time = time.time()
+        elapsed = end_time - start_time
+        hours, rem = divmod(elapsed, 3600)
+        minutes, seconds = divmod(rem, 60)
+        time_str = f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
+        self.logger.info(f"GraphAnalysis execution complete in {time_str}.")
 
 
