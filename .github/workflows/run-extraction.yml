@@ -1,0 +1,41 @@
+name: Run Extraction Pipeline
+
+on:
+  push:
+    branches:
+      - 'exp/*'
+  workflow_dispatch:
+    inputs:
+      prop_file_name:
+        description: 'Property file name (e.g., prop.json, prop_exp.json)'
+        required: true
+        default: 'prop.json'
+
+jobs:
+  extract:
+    runs-on: self-hosted # Executes directly on your target server
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build Podman Image
+        run: |
+          podman build -t graph_extraction -f docker/Dockerfile .
+
+      - name: Prepare Host Directories
+        run: |
+          mkdir -p ~/extraction/output
+
+      - name: Run Extraction Container
+        run: |
+          # Select the prop file to use (dispatch input or 'prop.json' fallback for pushes)
+          PROP_FILE="${{ github.event.inputs.prop_file_name || 'prop.json' }}"
+          
+          # Mount the selected configuration file to override the default prop.json inside the container
+          podman run --rm --replace \
+            --name graph_extraction \
+            -v ~/extraction/output:/app/output \
+            -v ${{ github.workspace }}/properties/$PROP_FILE:/app/properties/prop.json:ro \
+            -e MONGO_URI=${{ secrets.MONGO_URI }} \
+            graph_extraction
