@@ -56,9 +56,10 @@ if __name__ == '__main__':
     config = prop["graph_generation"]["parameters"]["input"]["conf"]
     checkpoint_every = prop["graph_generation"]["parameters"].get("checkpoint_every", 5000)
     source_input_type = prop["graph_generation"]["parameters"]["input"]["type"]
-    source_uri = config["uri"]
-    source_username = config["username"]
-    source_password = config["password"]
+        # for docker/podman, to safely inject database credentials
+    source_uri            = os.getenv("MONGO_URI", config.get("uri"))
+    source_username       = os.getenv("MONGO_USERNAME", config.get("username"))
+    source_password       = os.getenv("MONGO_PASSWORD", config.get("password"))
     source_auth_source = config["authName"]
     source_auth_mechanism = config["authMechanism"]
     source_db_name = config["db_name"]

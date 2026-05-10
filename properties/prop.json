@@ -24,12 +24,12 @@
         }
       },
       "graph_type": {
-        "tweet_retweet": true,
-        "user_hashtag": true,
-        "hashtag_cooccurrences": true,
-        "retweet": true,
-        "response": true,
-        "mention": true,
+        "tweet_retweet": false,
+        "user_hashtag": false,
+        "hashtag_cooccurrences": false,
+        "retweet": false,
+        "response": false,
+        "mention": false,
         "user_user": true
       },
       "output": {

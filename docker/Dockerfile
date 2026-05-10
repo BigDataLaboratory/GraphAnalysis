@@ -28,7 +28,7 @@ COPY Main.py fetch_texts.py retweet.py ids_user.py ./
 # /app/output    → analysis results
 # /app/logs      → log files
 # /app/properties → JSON config (override default properties/)
-VOLUME ["/app/resources", "/app/output", "/app/logs", "/app/properties"]
+VOLUME ["/app/resources", "/app/outputs", "/app/logs", "/app/properties"]
 
 ENTRYPOINT ["python", "Main.py"]
 CMD ["--properties", "/app/properties/prop.json"]

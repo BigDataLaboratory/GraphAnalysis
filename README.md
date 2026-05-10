@@ -31,10 +31,25 @@ podman build -t graph-analysis -f ./docker/Dockerfile .
 ```
 
 Step: 2: Run the containers
+local machine
 ```bash
 podman run \
-  -v ./resources:/app/resources:ro \
-  -v ./output:/app/output \
+  -e MONGO_URI="mongodb://host.containers.internal:27017" \
+  -v ./resources:/app/resources \
+  -v ./logs:/app/logs \
   -v ./properties:/app/properties \
+  graph-analysis
+```
+
+production
+```bash
+podman run \
+  -e MONGO_URI="mongodb://host.containers.internal:27017" \
+  -v /ipazianas/pasquini/extraction/outputs:/app/resources \
+  -v /ipazianas/pasquini/training/graphs:/app/graphs \
+  -v /ipazianas/pasquini/training/logs:/app/logs \
+  -v /ipazianas/pasquini/training/mlflow:/app/mlflow \
+  -v /ipazianas/pasquini/training/models:/app/models \
+  -v /ipazianas/pasquini/training/results:/app/results \
   graph-analysis
 ```
