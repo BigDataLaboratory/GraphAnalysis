@@ -1,10 +1,27 @@
 from itertools import combinations
-from datetime import datetime
+from datetime import datetime, timezone
+from dateutil import parser
 import mmh3
 
 
 class Utils:
-
+    @staticmethod
+    def to_datetime(value):
+        """Convert various input types to a datetime object."""
+        if isinstance(value, datetime):
+            return value
+        elif isinstance(value, (int, float)):
+            try:
+                return datetime.fromtimestamp(value, tz=timezone.utc)
+            except Exception:
+                return None
+        elif isinstance(value, str):
+            try:
+                return parser.parse(value)
+            except Exception:
+                return None
+        return None
+    
     @staticmethod
     def hash(x):
         """
@@ -16,42 +33,6 @@ class Utils:
         :return: A 64-bit hash of the input element as an
         """
         return mmh3.hash64(str(x), 0)[0]
-
-    _B62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
-    @staticmethod
-    def to_node_id(int_id):
-        """
-        Convert an integer hash to a compact base-62 node identifier.
-
-        Base-62 uses [0-9a-zA-Z] — CSV-safe, no special characters.
-        A 64-bit unsigned value needs at most 11 base-62 digits (vs 16 hex or 20 decimal),
-        reducing ID string length by ~31% compared to hexadecimal.
-
-        :param int_id: Integer hash value (from Utils.hash).
-        :return: Base-62 string without zero padding.
-        """
-        n = int_id & 0xFFFFFFFFFFFFFFFF  # ensure unsigned 64-bit
-        chars = []
-        while n:
-            chars.append(Utils._B62[n % 62])
-            n //= 62
-        return ''.join(reversed(chars)) if chars else '0'
-
-    @staticmethod
-    def from_node_id(base62_str):
-        """
-        Convert a compact base-62 node identifier back to an integer id.
-
-        :param base62_str: Base-62 string (from Utils.to_node_id).
-        :return: Integer id value.
-        """
-        if str(base62_str) == '0':
-            return 0
-        n = 0
-        for char in str(base62_str):
-            n = n * 62 + Utils._B62.index(char)
-        return n
 
     @staticmethod
     def compute_hash(x):

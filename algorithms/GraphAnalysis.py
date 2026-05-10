@@ -1,10 +1,9 @@
 import logging
 import pandas as pd
 import os
-
 from collections import namedtuple
 
-from Utils.Writer import Writer
+from Utils.Writer import Writer, SUPPORTED_FORMATS
 from algorithms.CommunityText import CommunityText
 from algorithms.GraphGeneration import GraphGeneration
 from algorithms.GraphGenerationUser import GraphGenerationUser
@@ -23,34 +22,36 @@ class GraphAnalysis:
         import time
         start_time = time.time()
 
-        file_format = getattr(self.parameters, "file_format", "pickle") # csv, parquet
+        # ── Resolve and validate file_format ──────────────────────────────────
+        file_format = getattr(self.parameters, "output_file_format", "csv")
+        if file_format not in SUPPORTED_FORMATS:
+            raise ValueError(
+                f"Unsupported file_format '{file_format}'. "
+                f"Choose from {SUPPORTED_FORMATS}."
+            )
 
+        # ── Graph Generation ──────────────────────────────────────────────────
         if self.parameters.do_graph_generation:
             p = self.parameters
-            is_user_oriented_graph = p.do_retweet_graph or p.do_response_graph or p.do_mention_graph
 
-            if is_user_oriented_graph:
-                pass
-
-            # user-user graph with node features and typed edges
-            if self.parameters.do_user_user_graph:
-                # get the new parameter, defaulting to False if not present
-                delete_tmp = getattr(self.parameters, "delete_tmp_after_merge", False)
+            # User-user graph with node features and typed edges
+            if p.do_user_user_graph:
+                delete_tmp = getattr(p, "delete_tmp_after_merge", False)
                 ggu = GraphGenerationUser(
-                    uri=self.parameters.source_uri,
-                    username=self.parameters.source_username,
-                    password=self.parameters.source_password,
-                    auth_source=self.parameters.source_auth_source,
-                    auth_mechanism=self.parameters.source_auth_mechanism,
-                    database_name=self.parameters.source_db_name,
-                    collection=self.parameters.source_collection,
-                    output_file_path=self.parameters.output_graph_path,
+                    uri=p.source_uri,
+                    username=p.source_username,
+                    password=p.source_password,
+                    auth_source=p.source_auth_source,
+                    auth_mechanism=p.source_auth_mechanism,
+                    database_name=p.source_db_name,
+                    collection=p.source_collection,
+                    output_file_path=p.output_graph_path,
                     delete_tmp_after_merge=delete_tmp,
-                    file_format=file_format
+                    file_format=file_format,
                 )
-                ggu.run(checkpoint_every=self.parameters.checkpoint_every)
+                ggu.run(checkpoint_every=p.checkpoint_every)
 
-            # temporal edge extraction — only if at least one graph type is enabled
+            # Typed edge extraction (retweet / mention / response / hashtag …)
             needs_graph_generation = any([
                 p.do_retweet_graph,
                 p.do_tweet_retweet_graph,
@@ -61,27 +62,29 @@ class GraphAnalysis:
             ])
 
             if needs_graph_generation:
-                gg = GraphGeneration(uri=self.parameters.source_uri,
-                                    username=self.parameters.source_username,
-                                    password=self.parameters.source_password,
-                                    auth_source=self.parameters.source_auth_source,
-                                    auth_mechanism=self.parameters.source_auth_mechanism,
-                                    database_name=self.parameters.source_db_name,
-                                    collection=self.parameters.source_collection,
-                                    start_date=self.parameters.source_chunk_start_date,
-                                    end_date=self.parameters.source_chunk_end_date,
-                                    method=self.parameters.source_method,
-                                    input_type=self.parameters.source_input_type,
-                                    output_file_path=self.parameters.output_graph_path,
-                                    retweet=self.parameters.do_retweet_graph,
-                                    tweet_retweet=self.parameters.do_tweet_retweet_graph,
-                                    user_hashtag=self.parameters.do_hashtag_graph,
-                                    hashtag_cooccurrences=self.parameters.do_hashtag_cooccurrences_graph,
-                                    response=self.parameters.do_response_graph,
-                                    mention=self.parameters.do_mention_graph,
-                                    file_format=file_format)
+                gg = GraphGeneration(
+                    uri=p.source_uri,
+                    username=p.source_username,
+                    password=p.source_password,
+                    auth_source=p.source_auth_source,
+                    auth_mechanism=p.source_auth_mechanism,
+                    database_name=p.source_db_name,
+                    collection=p.source_collection,
+                    start_date=p.source_chunk_start_date,
+                    end_date=p.source_chunk_end_date,
+                    method=p.source_method,
+                    input_type=p.source_input_type,
+                    output_file_path=p.output_graph_path,
+                    retweet=p.do_retweet_graph,
+                    tweet_retweet=p.do_tweet_retweet_graph,
+                    user_hashtag=p.do_hashtag_graph,
+                    hashtag_cooccurrences=p.do_hashtag_cooccurrences_graph,
+                    response=p.do_response_graph,
+                    mention=p.do_mention_graph,
+                    file_format=file_format,
+                )
                 w, s = mongoQueries.extract_tweets_if_contains_hashtags_or_is_retweet_or_reply()
-                gg.query_data_in_chunks(w, s, method=self.parameters.source_method)
+                gg.query_data_in_chunks(w, s, method=p.source_method)
             else:
                 self.logger.info("Skipping GraphGeneration: no graph type enabled.")
 

@@ -5,7 +5,7 @@
   },
   "graph_generation": {
     "to_execute": true,
-    "delete_tmp_after_merge": false,
+    "delete_tmp_after_merge": true,
     "parameters": {
       "checkpoint_every": 500,
       "input": {
@@ -24,12 +24,12 @@
         }
       },
       "graph_type": {
-        "tweet_retweet": false,
-        "user_hashtag": false,
-        "hashtag_cooccurrences": false,
-        "retweet": false,
-        "response": false,
-        "mention": false,
+        "tweet_retweet": true,
+        "user_hashtag": true,
+        "hashtag_cooccurrences": true,
+        "retweet": true,
+        "response": true,
+        "mention": true,
         "user_user": true
       },
       "output": {
@@ -44,7 +44,8 @@
           "hashtag_cooccurrences": "hashtag_cooccurrences",
           "multigraph": "multigraph"
         },
-        "map_file_name_prefix": "map"
+        "map_file_name_prefix": "map",
+        "file_format": "parquet"
       }
     }
   },

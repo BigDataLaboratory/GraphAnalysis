@@ -84,6 +84,7 @@ if __name__ == '__main__':
         "hashtag_cooccurrences"]
     output_multi_graph_path = prop["graph_generation"]["parameters"]["output"]["graph_file_name"]["multigraph"]
     output_map_prefix = prop["graph_generation"]["parameters"]["output"]["map_file_name_prefix"]
+    output_file_format = prop["graph_generation"]["parameters"]["output"]["file_format"]
 
     # Community detection parameters
     community_config = prop["community_detection"]["parameters"]
@@ -162,6 +163,7 @@ if __name__ == '__main__':
         "output_hashtag_cooccurrences_graph_path",
         "output_multi_graph_path",
         "output_map_prefix",
+        "output_file_format",
         # Community detection parameters
         "do_read_graph_from_file",
         "do_read_from_edge_list",
@@ -232,6 +234,7 @@ if __name__ == '__main__':
                    output_hashtag_cooccurrences_graph_path,
                    output_multi_graph_path,
                    output_map_prefix,
+                   output_file_format,
                    # Community detection parameters
                    do_read_graph_from_file,
                    do_read_from_edge_list,

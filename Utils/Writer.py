@@ -14,7 +14,7 @@ import igraph as ig
 import pandas as pd
 import numpy as np
 import pyarrow as pa
-import pyarrow.pkl as pq
+import pyarrow.parquet as pq
 
 from Utils.Const import Const as c
 from itertools import chain
@@ -24,195 +24,208 @@ from concurrent.futures import ProcessPoolExecutor
 
 from algorithms.EdgeToGraph import EdgeToGraph
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Supported formats
+# ─────────────────────────────────────────────────────────────────────────────
+SUPPORTED_FORMATS = ("csv", "pickle", "parquet")
+
+
+def _ext(file_format: str) -> str:
+    """Return the file extension for the given format."""
+    return {"csv": ".csv", "pickle": ".pkl", "parquet": ".parquet"}[file_format]
+
 
 class Writer:
     logger = logging.getLogger('Writer')
 
-    def __init__(self, graph_type = 'nx', temporal=False):
+    def __init__(self, graph_type='nx', temporal=False):
         self.graph_degree = defaultdict(int)
         self.graph_type = graph_type
         self.temporal_graph = temporal
         self.id = uuid.uuid1().hex
 
-    @staticmethod
-    def write_on_csv(file_path, rows):
-        """
-        Writes a list of rows to a CSV file.
-        Each row is expected to be a list of values that will be written as a single row in the CSV file.
-        If the file does not exist, it will be created. If it exists, new rows will be appended to the end of the file.
-
-        :param file_path: Path to the CSV file where the rows will be written.
-        :param rows: List of rows to write to the CSV file. Each row should be a list of values.
-        
-        :raises IOError: If there is an error writing to the file.
-        :raises FileNotFoundError: If the specified file path does not exist.
-        :raises Exception: For any other exceptions that may occur during the file writing process.
-
-        """
-        with open(file_path, 'a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerows(rows)
+    # ─────────────────────────────────────────────────────────────────────────
+    # LOW-LEVEL WRITERS
+    # ─────────────────────────────────────────────────────────────────────────
 
     @staticmethod
-    def write_on_pickle(file_path, rows, columns=None):
+    def write_on_csv(file_path: str, rows: list) -> None:
+        """
+        Append rows to a CSV file (creates the file if it does not exist).
+
+        :param file_path: Path with or without .csv extension.
+        :param rows: List of iterables, one per CSV row.
+        """
+        path = file_path if file_path.endswith(".csv") else file_path + ".csv"
+        with open(path, 'a', newline='', encoding='utf-8') as f:
+            csv.writer(f).writerows(rows)
+
+    @staticmethod
+    def write_on_pickle(file_path: str, rows: list, columns: list = None) -> None:
+        """
+        Append a batch of rows to a pickle file.
+
+        :param file_path: Path with or without .pkl extension.
+        :param rows: List of rows (lists or tuples).
+        :param columns: Ignored — kept for API consistency.
+        """
         if not rows:
             return
-        with open(file_path, 'ab') as f:
+        path = file_path if file_path.endswith(".pkl") else file_path + ".pkl"
+        with open(path, 'ab') as f:
             pickle.dump(rows, f)
 
     @staticmethod
-    def create_dirs(output_path, uuid):
+    def write_on_parquet(file_path: str, rows: list, columns: list = None) -> None:
         """
-        Creates directories for checkpoints and output files based on the provided path and UUID.
-        If the directories do not exist, they are created.
+        Append a batch of rows to a Parquet file (Snappy compression).
 
-        :param output_path: Path where the directories should be created.
-        :param uuid: Unique identifier for the directories.
+        :param file_path: Path with or without .parquet extension.
+        :param rows: List of rows (lists or tuples).
+        :param columns: Column names; positional fallback if None.
         """
-        checkpoint_folder = os.sep.join([output_path, c.CHECKPOINT_FOLDER, uuid])
-        output_folder = os.sep.join([output_path, uuid])
-        if not os.path.exists(checkpoint_folder):
-            os.makedirs(checkpoint_folder)
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
+        if not rows:
+            return
+        path = file_path if file_path.endswith(".parquet") else file_path + ".parquet"
+        df = pd.DataFrame(rows, columns=columns)
+        # downcast numeric columns to save space
+        for col in df.columns:
+            try:
+                df[col] = pd.to_numeric(df[col])
+                if pd.api.types.is_integer_dtype(df[col]):
+                    df[col] = pd.to_numeric(df[col], downcast='integer')
+            except (ValueError, TypeError):
+                pass
+        table = pa.Table.from_pandas(df, preserve_index=False)
+        mode = 'ab' if os.path.exists(path) else 'wb'
+        with pa.OSFile(path, mode) as sink:
+            with pq.ParquetWriter(sink, table.schema, compression='snappy') as pw:
+                pw.write_table(table)
 
-    @staticmethod
-    def create_dir(output_path, uuid):
-        """
-        Creates a directory for output files based on the provided path and UUID.
-        If the directory does not exist, it is created.
-
-        :param output_path: Path where the directory should be created.
-        :param uuid: Unique identifier for the directory.
-        """
-        output_folder = os.sep.join([output_path, uuid])
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
-
-    @staticmethod
-    def list_checkpoint_files(dir_path):
-        """
-        List all checkpoint files in the specified directory.
-
-        :param dir_path: Path to the directory containing checkpoint files.
-        :return: List of file paths in the directory.
-        """
-        return glob.glob(dir_path)
+    # ─────────────────────────────────────────────────────────────────────────
+    # UNIFIED WRITE / LOAD
+    # ─────────────────────────────────────────────────────────────────────────
 
     @staticmethod
-    def load_checkpoint_file(file_path):
+    def write_data(file_path: str, rows: list,
+                   columns: list = None, file_format: str = "csv") -> None:
+        """
+        Write rows to disk in the requested format.
+        The correct extension is appended automatically.
+
+        :param file_path: Base path **without** extension.
+        :param rows: List of rows to write.
+        :param columns: Column names (required for parquet; optional for others).
+        :param file_format: One of 'csv', 'pickle', 'parquet'.
+        :raises ValueError: If file_format is not supported.
+        """
+        if file_format not in SUPPORTED_FORMATS:
+            raise ValueError(f"Unsupported file_format '{file_format}'. "
+                             f"Choose from {SUPPORTED_FORMATS}.")
+        if file_format == "parquet":
+            Writer.write_on_parquet(file_path, rows, columns)
+        elif file_format == "pickle":
+            Writer.write_on_pickle(file_path, rows, columns)
+        else:
+            Writer.write_on_csv(file_path, rows)
+
+    @staticmethod
+    def load_checkpoint_file(file_path: str) -> list:
+        """
+        Load all rows from a checkpoint file regardless of its format.
+        The format is inferred from the file extension.
+
+        :param file_path: Full path including extension.
+        :return: List of rows (each row is a list).
+        """
         if file_path.endswith('.pkl'):
-            all_rows = []
+            rows = []
             with open(file_path, 'rb') as f:
                 while True:
                     try:
-                        all_rows.extend(pickle.load(f))
+                        rows.extend(pickle.load(f))
                     except EOFError:
                         break
-            return all_rows
+            return rows
+        elif file_path.endswith('.parquet'):
+            return pd.read_parquet(file_path).values.tolist()
         else:
-            with open(file_path, mode='r', newline='', encoding='utf-8', errors='replace') as f:
-                reader = csv.reader(f)
-                return [list(row) for row in reader]
+            with open(file_path, mode='r', newline='', encoding='utf-8',
+                      errors='replace') as f:
+                return [list(row) for row in csv.reader(f)]
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # DIRECTORY HELPERS
+    # ─────────────────────────────────────────────────────────────────────────
 
     @staticmethod
-    def process_chunk(rows):
-        """
-        Process a chunk of rows from a CSV file.
-        
-        :param rows: List of rows to process.
-        :return: Processed rows as a list of tuples.
-        """
-        return [tuple(row) for row in rows if row]
+    def create_dirs(output_path: str, uuid_str: str) -> None:
+        """Create checkpoint and output directories."""
+        for folder in [
+            os.sep.join([output_path, c.CHECKPOINT_FOLDER, uuid_str]),
+            os.sep.join([output_path, uuid_str]),
+        ]:
+            os.makedirs(folder, exist_ok=True)
 
     @staticmethod
-    def export_nx_nodes_with_attributes(g, file_path, attr_list=None):
-        """
-        Exports nodes with attributes from a NetworkX graph to a CSV file.
+    def create_dir(output_path: str, uuid_str: str) -> None:
+        """Create the output directory for a run."""
+        os.makedirs(os.sep.join([output_path, uuid_str]), exist_ok=True)
 
-        :param g: The igraph graph object.
-        :param file_path: Path to the output CSV file.
-        :param attr_list: List of attributes to export. If None, all attributes are exported
-        """
-        attributes = set()
-        if not attr_list:
-            for _, data in g.nodes(data=True):
-                attributes.update(data.keys())
-        else:
-            attributes = attr_list
+    @staticmethod
+    def list_checkpoint_files(pattern: str) -> list:
+        """Return all files matching a glob pattern."""
+        return glob.glob(pattern)
 
-        # Open the file for writing
-        with open(file_path, mode="a", newline="", encoding="utf-8") as file:
-            writer = csv.writer(file)
+    # ─────────────────────────────────────────────────────────────────────────
+    # GRAPH EXPORT HELPERS
+    # ─────────────────────────────────────────────────────────────────────────
 
-            # Write the header (attribute names)
-            writer.writerow(["node"] + [attr for attr in attributes])
-
-            # Write node data
+    @staticmethod
+    def export_nx_nodes_with_attributes(g, file_path: str,
+                                        attr_list: list = None) -> None:
+        """Export NetworkX node attributes to CSV."""
+        attributes = attr_list or sorted(
+            {k for _, d in g.nodes(data=True) for k in d})
+        with open(file_path, mode="a", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["node"] + list(attributes))
             for node, data in g.nodes(data=True):
-                row = [node] + [data.get(attr, "null") for attr in attributes]
-                writer.writerow(row)
+                w.writerow([node] + [data.get(a, "null") for a in attributes])
 
     @staticmethod
-    def export_nodes_with_attributes(g, file_path, attr_list=None):
-        """
-        Exports nodes with attributes from an igraph graph to a CSV file.
+    def export_nodes_with_attributes(g, file_path: str,
+                                     attr_list: list = None) -> None:
+        """Export igraph node attributes to CSV."""
+        attributes = attr_list or g.vs.attributes()
+        with open(file_path, mode="a", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["id"] + attributes)
+            for v in g.vs:
+                w.writerow([v.index] + [v[a] for a in attributes])
 
-        :param g: The igraph graph object.
-        :param file_path: Path to the output CSV file.
-        :param attr_list: List of attributes to export. If None, all attributes are exported
-        """
-        # Get all attributes for vertices
-        attributes = g.vs.attributes() if not attr_list else attr_list
+    # ─────────────────────────────────────────────────────────────────────────
+    # GRAPH MERGE / SERIALIZE
+    # ─────────────────────────────────────────────────────────────────────────
 
-        for attr in attributes:
-            if attr not in g.vs.attributes():
-                print(f"Missing attribute: {attr}")
-
-        # Open the file for writing
-        with open(file_path, mode="a", newline="", encoding="utf-8") as file:
-            writer = csv.writer(file)
-
-            # Write the header (attribute names)
-            writer.writerow(["id"] + attributes)
-
-            # Write vertex data
-            for vertex in g.vs:
-                row = [vertex.index] + [vertex[attr] for attr in attributes]
-                writer.writerow(row)
-
-    def collapse_nodes(self, labels, min_size=30, dummy=-1):
-        """
-        Collapses nodes in the graph based on their labels, keeping only those with a size greater than or equal to `min_size`.
-        Nodes that do not meet this criterion are replaced with a dummy value.
-        This method is useful for simplifying the graph by merging less significant nodes into a single dummy community.
-
-        :param labels: A list or array-like structure containing the labels of the nodes.
-        :param min_size: The minimum size for a label to be retained. Nodes with fewer than `min_size` occurrences will be replaced with the dummy value.
-        :param dummy: The value to replace nodes community that do not meet the `min_size` criterion.
-        """
+    def collapse_nodes(self, labels, min_size: int = 30, dummy: int = -1):
+        """Collapse small communities into a dummy label."""
         self.logger.info("Start collapsing nodes")
         vc = pd.Series(labels).value_counts()
         big = vc[vc >= min_size].index
         self.logger.info("Finished collapsing nodes")
         return np.where(pd.Series(labels).isin(big), labels, dummy)
-    
-    def process_csv_file(self, file_path, chunk_size, header=False):
-        """
-        Read a single CSV file in chunks and process it.
 
-        Args:
-        - file_path: Path to the CSV file.
-        - chunk_size: Number of rows per chunk.
+    def process_chunk(self, rows: list) -> list:
+        return [tuple(row) for row in rows if row]
 
-        Returns:
-        - List of processed chunks for the file.
-        """
+    def process_csv_file(self, file_path: str, chunk_size: int,
+                         header: bool = False) -> list:
         processed_data = []
-        with open(file_path, mode='r', newline='', encoding='utf-8') as file:
-            reader = csv.reader(file)
+        with open(file_path, mode='r', newline='', encoding='utf-8') as f:
+            reader = csv.reader(f)
             if header:
-                h = next(reader, None)  # Skip the headers
+                next(reader, None)
             rows = []
             for row in reader:
                 rows.append(row)
@@ -268,12 +281,14 @@ class Writer:
                     break
                 batch.append(row)
                 i += 1
-        e_to_g = EdgeToGraph(self.graph_type, self.temporal_graph)
-        e_to_g.to_graph(batch)
-        return e_to_g.get_graph()
+        e = EdgeToGraph(self.graph_type, self.temporal_graph)
+        e.to_graph(batch)
+        return e.get_graph()
 
-    def merge_and_serialize(self, global_graph, subgraph, graph_type, step, output_folder, output_file_name, serialize_every=10):
-
+    def merge_and_serialize(self, global_graph, subgraph, graph_type: str,
+                            step: int, output_folder: str,
+                            output_file_name: str,
+                            serialize_every: int = 10):
         if graph_type == 'nx':
             global_graph = nx.compose(global_graph, subgraph)
         elif graph_type == 'igraph':
@@ -298,8 +313,7 @@ class Writer:
                 master.add_vertices(len(names))
                 master.vs["name"] = names
                 master.vs["type"] = types
-
-                sources, targets, weights, types_edge  = [], [], [], []
+                sources, targets, weights, types_edge = [], [], [], []
                 times = [] if self.temporal_graph else None
 
                 for g in graphs:
@@ -477,7 +491,6 @@ class Writer:
         self.logger.info(f"Reading snapshot at {snapshot_dir}")
         files = sorted(glob.glob(os.path.join(snapshot_dir, "*.pkl")))
         if not files:
-            self.logger.info("No pickle files found.")
             return ig.Graph(directed=True)
 
         # 1) Parallel load
