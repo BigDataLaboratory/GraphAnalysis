@@ -20,7 +20,7 @@ class Utils:
     _B62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
     @staticmethod
-    def to_node_id(hash_value):
+    def to_node_id(int_id):
         """
         Convert an integer hash to a compact base-62 node identifier.
 
@@ -28,10 +28,10 @@ class Utils:
         A 64-bit unsigned value needs at most 11 base-62 digits (vs 16 hex or 20 decimal),
         reducing ID string length by ~31% compared to hexadecimal.
 
-        :param hash_value: Integer hash value (from Utils.hash).
+        :param int_id: Integer hash value (from Utils.hash).
         :return: Base-62 string without zero padding.
         """
-        n = hash_value & 0xFFFFFFFFFFFFFFFF  # ensure unsigned 64-bit
+        n = int_id & 0xFFFFFFFFFFFFFFFF  # ensure unsigned 64-bit
         chars = []
         while n:
             chars.append(Utils._B62[n % 62])
@@ -41,10 +41,10 @@ class Utils:
     @staticmethod
     def from_node_id(base62_str):
         """
-        Convert a compact base-62 node identifier back to an integer hash.
+        Convert a compact base-62 node identifier back to an integer id.
 
         :param base62_str: Base-62 string (from Utils.to_node_id).
-        :return: Integer hash value.
+        :return: Integer id value.
         """
         if str(base62_str) == '0':
             return 0

@@ -23,6 +23,8 @@ class GraphAnalysis:
         import time
         start_time = time.time()
 
+        file_format = getattr(self.parameters, "file_format", "pickle") # csv, parquet
+
         if self.parameters.do_graph_generation:
             p = self.parameters
             is_user_oriented_graph = p.do_retweet_graph or p.do_response_graph or p.do_mention_graph
@@ -43,7 +45,8 @@ class GraphAnalysis:
                     database_name=self.parameters.source_db_name,
                     collection=self.parameters.source_collection,
                     output_file_path=self.parameters.output_graph_path,
-                    delete_tmp_after_merge=delete_tmp
+                    delete_tmp_after_merge=delete_tmp,
+                    file_format=file_format
                 )
                 ggu.run(checkpoint_every=self.parameters.checkpoint_every)
 
@@ -75,7 +78,8 @@ class GraphAnalysis:
                                     user_hashtag=self.parameters.do_hashtag_graph,
                                     hashtag_cooccurrences=self.parameters.do_hashtag_cooccurrences_graph,
                                     response=self.parameters.do_response_graph,
-                                    mention=self.parameters.do_mention_graph)
+                                    mention=self.parameters.do_mention_graph,
+                                    file_format=file_format)
                 w, s = mongoQueries.extract_tweets_if_contains_hashtags_or_is_retweet_or_reply()
                 gg.query_data_in_chunks(w, s, method=self.parameters.source_method)
             else:

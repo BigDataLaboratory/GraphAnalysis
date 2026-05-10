@@ -74,7 +74,7 @@ class GraphGeneration(MongoConnection):
 
     def __init__(self, uri, username=None, password=None, auth_source=None, auth_mechanism=None, database_name=None, db=None,
                  collection=None, start_date=None, end_date=None, method="full", input_type="mongo", output_file_path=None, retweet=False, tweet_retweet=False,
-                 user_hashtag=False, hashtag_cooccurrences=False, response=False, mention=False):
+                 user_hashtag=False, hashtag_cooccurrences=False, response=False, mention=False, file_format="csv"):
         super().__init__(uri, username, password, auth_source, auth_mechanism, db, database_name, collection, start_date, end_date)
         self.checkpoint_folder = "tmp"
         self.sep = "_"
@@ -87,6 +87,7 @@ class GraphGeneration(MongoConnection):
         self.hashtag_cooccurrences = hashtag_cooccurrences
         self.response = response
         self.mention = mention
+        self.file_format = file_format
         self.w = Writer()
 
     def process_document(self, d):
@@ -259,7 +260,10 @@ class GraphGeneration(MongoConnection):
         checkpoint_dir = os.sep.join([self.output_file_path, self.checkpoint_folder, self.id])
         # Iterate over all checkpoint files in the folder
         for graph_type in GraphType:
-            checkpoint_files = self.sep.join([self.checkpoint_folder, self.id, graph_type.name, "*"])
+            if self.file_format == "pickle":
+                checkpoint_files = self.sep.join([self.checkpoint_folder, self.id, graph_type.name, "*"]) + ".pkl"
+            else:
+                checkpoint_files = self.sep.join([self.checkpoint_folder, self.id, graph_type.name, "*"])
             list_checkpoint_files = Writer.list_checkpoint_files(os.sep.join([checkpoint_dir, checkpoint_files]))
             merged_file_path = os.sep.join([self.output_file_path, self.id, graph_type.name])
 
@@ -283,7 +287,11 @@ class GraphGeneration(MongoConnection):
                     else:
                         final_result_graph.append((k[0], k[1], k[2], k[3], v[0], v[1]))
                     
-                Writer.write_on_csv(merged_file_path, final_result_graph)
+                if self.file_format == "pickle":
+                    columns = ["relationship", "src", "dst", "date", "weight"] if graph_type.name != GraphType(1).name else ["relationship", "src", "dst", "date", "date_tweet", "date_rt"]
+                    Writer.write_on_pickle(merged_file_path + ".pkl", final_result_graph, columns=columns)
+                else:
+                    Writer.write_on_csv(merged_file_path + ".csv", final_result_graph)
             elif method == "full":
                 aggregated_results = defaultdict(lambda: 0)  # Structure: { (key1, key2): sum_third }
                 for file_path in list_checkpoint_files:
@@ -305,11 +313,18 @@ class GraphGeneration(MongoConnection):
                     else:
                         final_result_graph.append((k[0], k[1], k[2], v[0], v[1]))
 
-                Writer.write_on_csv(merged_file_path, final_result_graph)
+                if self.file_format == "pickle":
+                    columns = ["relationship", "src", "dst", "weight"] if graph_type.name != GraphType(1).name else ["relationship", "src", "dst", "date_tweet", "date_rt"]
+                    Writer.write_on_pickle(merged_file_path + ".pkl", final_result_graph, columns=columns)
+                else:
+                    Writer.write_on_csv(merged_file_path + ".csv", final_result_graph)
 
         # Iterate over all checkpoint files in the folder
         for map_type in MapType:
-            checkpoint_files = self.sep.join([self.checkpoint_folder, self.id, map_type.name, c.MAP, "*"])
+            if self.file_format == "pickle":
+                checkpoint_files = self.sep.join([self.checkpoint_folder, self.id, map_type.name, c.MAP, "*"]) + ".pkl"
+            else:
+                checkpoint_files = self.sep.join([self.checkpoint_folder, self.id, map_type.name, c.MAP, "*"])
             list_map_files = Writer.list_checkpoint_files(os.sep.join([checkpoint_dir, checkpoint_files]))
             merged_file_path = os.sep.join([self.output_file_path, str(self.id), map_type.name])
 
@@ -319,7 +334,12 @@ class GraphGeneration(MongoConnection):
                 checkpoint_data = Writer.load_checkpoint_file(file_path)
                 all_data.extend(checkpoint_data)
             unique_data = list(set(tuple(row) for row in all_data))  # Remove duplicates by converting to set and back to list
-            Writer.write_on_csv(merged_file_path, unique_data)
+            
+            if self.file_format == "pickle":
+                columns = ["original_id", "hash_id", "map_type"]
+                Writer.write_on_pickle(merged_file_path + ".pkl", unique_data, columns=columns)
+            else:
+                Writer.write_on_csv(merged_file_path + ".csv", unique_data)
 
     def save_checkpoint(self, intermediate_results, intermediate_map, process_id):
         """
@@ -346,13 +366,25 @@ class GraphGeneration(MongoConnection):
 
         dir_path = os.sep.join([self.output_file_path, self.checkpoint_folder, str(self.id)])
         for k in result_graph:
-            file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), str(process_id)])
-            path = os.sep.join([dir_path, file_path])
-            Writer.write_on_csv(path, result_graph[k])
+            if self.file_format == "pickle":
+                file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), str(process_id)]) + ".pkl"
+                path = os.sep.join([dir_path, file_path])
+                columns = ["relationship", "src", "dst", "weight"] if k != GraphType(1).name else ["relationship", "src", "dst", "date_tweet", "date_rt"]
+                Writer.write_on_pickle(path, result_graph[k], columns=columns)
+            else:
+                file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), str(process_id)])
+                path = os.sep.join([dir_path, file_path])
+                Writer.write_on_csv(path, result_graph[k])
         for k in result_map:
-            file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), c.MAP, str(process_id)])
-            path = os.sep.join([dir_path, file_path])
-            Writer.write_on_csv(path, result_map[k])
+            if self.file_format == "pickle":
+                file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), c.MAP, str(process_id)]) + ".pkl"
+                path = os.sep.join([dir_path, file_path])
+                columns = ["original_id", "hash_id", "map_type"]
+                Writer.write_on_pickle(path, result_map[k], columns=columns)
+            else:
+                file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), c.MAP, str(process_id)])
+                path = os.sep.join([dir_path, file_path])
+                Writer.write_on_csv(path, result_map[k])
 
     def save_bucket_checkpoint(self, intermediate_results, intermediate_map, process_id):
         """
@@ -378,13 +410,25 @@ class GraphGeneration(MongoConnection):
 
         dir_path = os.sep.join([self.output_file_path, self.checkpoint_folder, str(self.id)])
         for k in result_graph:
-            file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), str(process_id)])
-            path = os.sep.join([dir_path, file_path])
-            Writer.write_on_csv(path, result_graph[k])
+            if self.file_format == "pickle":
+                file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), str(process_id)]) + ".pkl"
+                path = os.sep.join([dir_path, file_path])
+                columns = ["relationship", "src", "dst", "date", "weight"] if k != GraphType(1).name else ["relationship", "src", "dst", "date", "date_tweet", "date_rt"]
+                Writer.write_on_pickle(path, result_graph[k], columns=columns)
+            else:
+                file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), str(process_id)])
+                path = os.sep.join([dir_path, file_path])
+                Writer.write_on_csv(path, result_graph[k])
         for k in result_map:
-            file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), c.MAP, str(process_id)])
-            path = os.sep.join([dir_path, file_path])
-            Writer.write_on_csv(path, result_map[k])
+            if self.file_format == "pickle":
+                file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), c.MAP, str(process_id)]) + ".pkl"
+                path = os.sep.join([dir_path, file_path])
+                columns = ["original_id", "hash_id", "map_type"]
+                Writer.write_on_pickle(path, result_map[k], columns=columns)
+            else:
+                file_path = self.sep.join([self.checkpoint_folder, str(self.id), str(k), c.MAP, str(process_id)])
+                path = os.sep.join([dir_path, file_path])
+                Writer.write_on_csv(path, result_map[k])
 
     def worker_process(self, where, project, method, chunk, batch_size, checkpoint_interval, process_id):
         """

@@ -13,7 +13,8 @@ import networkx as nx
 import igraph as ig
 import pandas as pd
 import numpy as np
-import math
+import pyarrow as pa
+import pyarrow.pkl as pq
 
 from Utils.Const import Const as c
 from itertools import chain
@@ -51,6 +52,13 @@ class Writer:
         with open(file_path, 'a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerows(rows)
+
+    @staticmethod
+    def write_on_pickle(file_path, rows, columns=None):
+        if not rows:
+            return
+        with open(file_path, 'ab') as f:
+            pickle.dump(rows, f)
 
     @staticmethod
     def create_dirs(output_path, uuid):
@@ -93,17 +101,19 @@ class Writer:
 
     @staticmethod
     def load_checkpoint_file(file_path):
-        """
-        Load a checkpoint file and return rows as a list of tuples.
-        This method reads a CSV file and returns its content as a list of rows,
-        where each row is represented as a list of values.
-
-        :param file_path: Path to the checkpoint file.
-        :return: List of rows from the CSV file.
-        """
-        with open(file_path, mode='r', newline='', encoding='utf-8', errors='replace') as f:
-            reader = csv.reader(f)
-            return [list(row) for row in reader]
+        if file_path.endswith('.pkl'):
+            all_rows = []
+            with open(file_path, 'rb') as f:
+                while True:
+                    try:
+                        all_rows.extend(pickle.load(f))
+                    except EOFError:
+                        break
+            return all_rows
+        else:
+            with open(file_path, mode='r', newline='', encoding='utf-8', errors='replace') as f:
+                reader = csv.reader(f)
+                return [list(row) for row in reader]
 
     @staticmethod
     def process_chunk(rows):

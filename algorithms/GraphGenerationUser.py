@@ -170,10 +170,10 @@ class GraphGenerationUser(MongoConnection):
 
     Outputs (under output_file_path/<run_id>/):
         user_features.csv     : node feature matrix (one row per user)
-        edges_retweet.csv     : (src_hash, dst_hash, weight)
-        edges_reply.csv       : (src_hash, dst_hash, weight)
-        edges_mention.csv     : (src_hash, dst_hash, weight) — resolved via map
-        screen_name_map.csv   : (screen_name, user_id_hash) for reference
+        edges_retweet.csv     : (src, dst, weight)
+        edges_reply.csv       : (src, dst, weight)
+        edges_mention.csv     : (src, dst, weight) — resolved via map
+        screen_name_map.csv   : (screen_name, user_id) for reference
 
     Mention edges whose target screen_name cannot be resolved to a known
     user in the dataset are silently dropped.
@@ -183,7 +183,7 @@ class GraphGenerationUser(MongoConnection):
 
     def __init__(self, uri, database_name, collection, output_file_path,
                  username=None, password=None, auth_source=None, auth_mechanism=None,
-                 delete_tmp_after_merge=False):
+                 delete_tmp_after_merge=False, file_format="csv"):
         """
         :param uri: MongoDB connection URI.
         :param database_name: Name of the MongoDB database.
@@ -194,6 +194,7 @@ class GraphGenerationUser(MongoConnection):
         :param auth_source: Authentication source (optional).
         :param auth_mechanism: Authentication mechanism (optional).
         :param delete_tmp_after_merge: Whether to delete the temporary checkpoint folder after merging (default: False).
+        :param file_format: Output file format ("csv" or "pickle").
         """
         super().__init__(uri, username, password, auth_source, auth_mechanism,
                          db=None, database_name=database_name, collection=collection)
@@ -201,6 +202,7 @@ class GraphGenerationUser(MongoConnection):
         self.id = uuid.uuid1().hex
         self.checkpoint_folder = "tmp"
         self.delete_tmp_after_merge = delete_tmp_after_merge
+        self.file_format = file_format
 
     # ─────────────────────────────────────────────────────────────────────────
     # CORE PROCESSING
@@ -216,7 +218,7 @@ class GraphGenerationUser(MongoConnection):
         - Sets (unique hashtags, unique mentions)
         - Edge targets grouped by interaction type
 
-        Mention edges are returned as raw (src_hash, screen_name, weight) tuples
+        Mention edges are returned as raw (src, screen_name, weight) tuples
         because screen_names must be resolved to user_ids at merge time.
 
         :param user_id: The Twitter user ID (integer) of the author.
@@ -237,12 +239,24 @@ class GraphGenerationUser(MongoConnection):
         n_web = 0
         n_news_manager = 0
         n_bot_api = 0
-        n_other = 0
         latest_tweet = None
         hashtags = set()
         timestamps = []
         coords_list = []
         places_list = []
+        hashtag_counter = Counter()
+        reply_first_ts = {}   # dst_user_id -> first reply timestamp (float)
+        reply_last_ts = {}    # dst_user_id -> last reply timestamp (float)
+
+        # reply latency accumulators (per couple A->B)
+        reply_latency_sum = defaultdict(float)   # dst_user_id -> sum of latencies (seconds)
+        reply_latency_count = defaultdict(int)   # dst_user_id -> count of reply events
+
+        # retweet lifespan tracking
+        retweet_first_ts = {}   # dst_user_id -> first retweet timestamp (float)
+        retweet_last_ts = {}    # dst_user_id -> last retweet timestamp (float)
+
+        last_seen_ts_by_user = {}   # user_id -> last seen tweet timestamp (float)
 
         ##############################################################################
         ### EDGE FEATURES VARIABLES ##################################################
@@ -250,6 +264,12 @@ class GraphGenerationUser(MongoConnection):
         retweet_targets = defaultdict(int)   # dst_user_id (int) → interaction count
         reply_targets = defaultdict(int)     # dst_user_id (int) → interaction count
         mention_targets = defaultdict(int)   # screen_name (str) → interaction count
+
+        # Fast retweet tracking
+        retweet_fast_count = defaultdict(int)   # dst_user_id -> number of retweets within threshold
+        FAST_RT_THRESHOLD = 30                  # threshold in seconds; default 30s.
+
+
 
         seen_tweet_ids = set()
 
@@ -275,10 +295,10 @@ class GraphGenerationUser(MongoConnection):
                 n_mobile += 1
             elif source_class == 'web':
                 n_web += 1
-            elif source_class == 'automation':
-                n_bot_api += 1
+            elif source_class == 'news_manager':
+                n_news_manager += 1
             else:
-                n_other += 1
+                n_bot_api += 1
 
             # Sensitive content flag
             if tweet.get('possibly_sensitive') is True:
@@ -315,10 +335,19 @@ class GraphGenerationUser(MongoConnection):
                     ht = ht.strip().lower()
                     if ht:
                         hashtags.add(ht)
+                        hashtag_counter[ht] += 1
 
             # Keep latest tweet for snapshot fields (followers, verified, etc.)
             if latest_tweet is None or tweet['created_at'] > latest_tweet['created_at']:
                 latest_tweet = tweet
+
+            # se il tweet è di un utente (tweet['user']['id']), aggiorna last_seen
+            try:
+                author_id = tweet.get('user', {}).get('id')
+                if author_id:
+                    last_seen_ts_by_user[author_id] = tweet['created_at'].timestamp()
+            except Exception:
+                pass
 
             ##########################################################################
             ### EDGE FEATURES COMPUTATION ############################################
@@ -327,13 +356,56 @@ class GraphGenerationUser(MongoConnection):
                 n_retweets += 1
                 rt_uid = tweet['retweeted_status']['user']['id']
                 retweet_targets[rt_uid] += 1
+                ts = tweet['created_at'].timestamp()
+                if rt_uid not in retweet_first_ts or ts < retweet_first_ts[rt_uid]:
+                    retweet_first_ts[rt_uid] = ts
+                if rt_uid not in retweet_last_ts or ts > retweet_last_ts[rt_uid]:
+                    retweet_last_ts[rt_uid] = ts
+
+                # --- Fast-RT detection: latency between retweet and original tweet creation ---
+                try:
+                    orig_created = None
+                    # prefer retweeted_status.created_at if present
+                    rs = tweet.get('retweeted_status') or {}
+                    orig_created = rs.get('created_at') or rs.get('timestamp_ms') or rs.get('created_at_str')
+                    if orig_created:
+                        orig_dt = convert_to_datetime(orig_created)
+                        if orig_dt:
+                            latency = ts - orig_dt.timestamp()
+                            if latency >= 0 and latency <= FAST_RT_THRESHOLD:
+                                retweet_fast_count[rt_uid] += 1
+                except Exception:
+                    # non blocchiamo l'estrazione per formati inattesi
+                    pass
+
             elif is_reply:
                 n_replies += 1
                 reply_uid = tweet.get('in_reply_to_user_id')
                 if reply_uid and reply_uid != -1:
                     reply_targets[reply_uid] += 1
+                    ts = tweet['created_at'].timestamp()
+                    # first timestamp
+                    if reply_uid not in reply_first_ts or ts < reply_first_ts[reply_uid]:
+                        reply_first_ts[reply_uid] = ts
+                    # last timestamp
+                    if reply_uid not in reply_last_ts or ts > reply_last_ts[reply_uid]:
+                        reply_last_ts[reply_uid] = ts
+
+                    # --- Avg Reply Latency: prefer parent tweet creation time if disponibile ---
+                    parent_created = tweet.get('in_reply_to_status_created_at') or tweet.get('in_reply_to_status_created_at_str')
+                    if parent_created:
+                        try:
+                            parent_dt = convert_to_datetime(parent_created)
+                            if parent_dt:
+                                latency = ts - parent_dt.timestamp()
+                                if latency >= 0:
+                                    reply_latency_sum[reply_uid] += latency
+                                    reply_latency_count[reply_uid] += 1
+                        except Exception:
+                            pass
             else:
                 n_original += 1
+
 
             # Mentions — stored as screen_names (resolved later)
             if not is_retweet:
@@ -353,8 +425,8 @@ class GraphGenerationUser(MongoConnection):
         ##########################################################################
         ### NODE FEATURES OBJECT CREATION ########################################
         ##########################################################################
-        src_hash = int(user_id)                 # int — used internally as dict key
-        src_node_id = Utils.to_node_id(src_hash) # hex str — used only for CSV output
+        user_id_int = int(user_id)                 # int — used internally as dict key
+        src_node_id = Utils.to_node_id(user_id_int) if self.file_format != 'pickle' else user_id_int
         latest_user = latest_tweet['user']
 
         # --- Social Influence Ratio (followers / (followers + friends)) ---
@@ -418,19 +490,52 @@ class GraphGenerationUser(MongoConnection):
         except Exception:
             source_entropy = 0.0
 
+        # --- Hashtag entropy (Shannon) ---
+        try:
+            # total hashtag occurrences (non unici)
+            hashtag_counts = Counter()
+            # se nel loop sopra hai raccolto solo l'insieme `hashtags`, allora
+            # devi invece contare le occorrenze: se non le hai, puoi ricostruirle
+            # dal campo hashtagEntities per ogni tweet; qui assumiamo che
+            # `hashtags` sia l'insieme e che tu abbia anche raccolto i conteggi
+            # durante il loop in una struttura `hashtag_counter` (preferibile).
+            # Se non esiste, fallback: treat unique only (entropy=0).
+            if 'hashtag_counter' in locals():
+                hashtag_counts = hashtag_counter
+            else:
+                # fallback: uniform distribution over unique hashtags (no entropy)
+                hashtag_counts = Counter({h: 1 for h in hashtags})
+
+            total_hashtags = sum(hashtag_counts.values())
+            unique_hashtags = len(hashtag_counts)
+
+            if total_hashtags > 0 and unique_hashtags > 1:
+                probs = [c / total_hashtags for c in hashtag_counts.values() if c > 0]
+                raw_hashtag_entropy = -sum(p * math.log2(p) for p in probs)
+                hashtag_entropy = raw_hashtag_entropy / math.log2(unique_hashtags)
+            else:
+                hashtag_entropy = 0.0
+        except Exception:
+            hashtag_entropy = 0.0
+
+        # also expose simple counts for downstream use
+        n_hashtags_total = int(total_hashtags) if 'total_hashtags' in locals() else 0
+        n_unique_hashtags = unique_hashtags if 'unique_hashtags' in locals() else len(hashtags)
+
+
         def log1p(x):
             return round(math.log1p(x), 2)
 
         features = {
-            'user_id':           src_hash,     # int — kept for internal joins (do not modify)
+            'user_id':           user_id_int,     # int — kept for internal joins (do not modify)
             'user_node_id':      src_node_id,  # hex — written to CSV as the final node ID
             
             # --- Activity Features ---
-            'total':             n_total,      # Total number of tweets by this user
-            'retweets':          n_retweets,
-            'replies':           n_replies,
-            'original':          n_original,
-            
+            'total':             log1p(n_total),      # Total number of tweets by this user
+            'retweets':          log1p(n_retweets),
+            'replies':           log1p(n_replies),
+            'original':          log1p(n_original),
+
             # --- Profile Features (from their most recent tweet) ---
             'likes':             log1p(latest_user.get('favourites_count', 0)),
             'followers':         log1p(latest_user.get('followers_count', 0)),
@@ -439,11 +544,13 @@ class GraphGenerationUser(MongoConnection):
             'account_date':      account_date,
             'listed_count':      log1p(latest_user.get('listed_count', 0)),
             'favourites_count':  log1p(latest_user.get('favourites_count', 0)),
-            'reputation_score': round(social_influence_ratio, 2),
+            'reputation_score':  round(social_influence_ratio, 2),
 
             # --- Network/Content Features ---
             'n_unique_hashtags': len(hashtags),
             'n_unique_mentions': len(mention_targets),
+            'n_hashtags_total':  log1p(n_hashtags_total),
+            'hashtag_entropy':   round(hashtag_entropy, 4),
 
             # --- Automation / Regularity Features ---
             'activation_age':             log1p(activation_age),
@@ -460,7 +567,7 @@ class GraphGenerationUser(MongoConnection):
             'screen_name':                latest_user.get('screen_name', ''), # Used to resolve mentions
             
             # Sensitive content metrics
-            'sensitive_count':            sensitive_count,
+            'sensitive_count':            log1p(sensitive_count),
             'sensitive_rate':             sensitive_rate,
 
             # Source counts and ratios
@@ -468,27 +575,56 @@ class GraphGenerationUser(MongoConnection):
             'web_ratio':               round(web_ratio, 4),
             'news_manager_ratio':      round(news_manager_ratio, 4),
             'bot_api_ratio':           round(bot_api_ratio, 4),
-            'source_entropy':           round(source_entropy, 4),
+            'source_entropy':          round(source_entropy, 4),
         }
 
         ##########################################################################
         ### EDGE FEATURES OBJECTS CREATION #######################################
         ##########################################################################
+        def fast_retweet_ratio(dst_uid):
+            count = retweet_fast_count.get(dst_uid, 0)
+            total = retweet_targets.get(dst_uid, 0)
+            return round((count / float(total)) if total > 0 else 0.0, 4)
+
+        def retweet_lifespan(dst_uid):
+            first = retweet_first_ts.get(dst_uid)
+            last = retweet_last_ts.get(dst_uid)
+            if first is not None and last is not None and last >= first:
+                return log1p(last - first)
+            return 0.0
+
+        def avg_reply_latency(dst_uid):
+            dst_reply_latency = reply_latency_sum.get(dst_uid, 0)
+            dst_reply_count = reply_latency_count.get(dst_uid, 1)
+            avg_latency = dst_reply_latency / dst_reply_count if dst_reply_count > 0 else 0.0
+            return log1p(max(0, avg_latency))
+
+        def reply_lifespan(dst_uid):
+            first = reply_first_ts.get(dst_uid)
+            last = reply_last_ts.get(dst_uid)
+            if first is not None and last is not None and last >= first:
+                return log1p(last - first)
+            return 0.0
+
 
         # Retweet and reply edges — node IDs in hex for compact CSV output
         edges_retweet_features = [
             (
                 src_node_id,                        # source node ID (hex string)
-                Utils.to_node_id(int(dst_uid)),     # destination node ID (hex string)
-                weight                              # retweet count (weight)
+                Utils.to_node_id(int(dst_uid)) if self.file_format != 'pickle' else int(dst_uid),     # destination node ID (hex string)
+                weight,                             # retweet count (weight)
+                retweet_lifespan(dst_uid),          # lifespan of the retweet interaction
+                fast_retweet_ratio(dst_uid)         # ratio of fast retweets
             )
             for dst_uid, weight in retweet_targets.items()
         ]
         edges_reply_features = [
             (
                 src_node_id,                        # source node ID (hex string)
-                Utils.to_node_id(int(dst_uid)),     # destination node ID (hex string)
-                weight                              # reply count (weight)
+                Utils.to_node_id(int(dst_uid)) if self.file_format != 'pickle' else int(dst_uid),     # destination node ID (hex string)
+                weight,                             # reply count (weight)
+                reply_lifespan(dst_uid),            # lifespan of the reply interaction
+                avg_reply_latency(dst_uid)          # average reply latency
             )
             for dst_uid, weight in reply_targets.items()
         ]
@@ -496,10 +632,10 @@ class GraphGenerationUser(MongoConnection):
         # Mention edges — src in hex, screen_name kept as-is (resolved at merge time)
         mention_edges_raw_features = [
             (
-                src_node_id,                        # source node ID (hex string)
-                screen_name,                        # destination screen_name (to be resolved later)
-                weight                              # mention count (weight)
-             )
+                src_node_id,        # source node ID (hex string)
+                screen_name,        # destination screen_name (to be resolved later)
+                weight              # mention count (weight)
+            )
             for screen_name, weight in mention_targets.items()
         ]
 
@@ -540,24 +676,41 @@ class GraphGenerationUser(MongoConnection):
                 f['verified'], f['account_date'], f['listed_count'],
                 f['favourites_count'], f['reputation_score'],
                 f['n_unique_hashtags'], f['n_unique_mentions'],
-                f['activation_age'], f['tweet_regularity_score'], 
+                f['n_hashtags_total'], f['hashtag_entropy'],
+                f['activation_age'], f['tweet_regularity_score'],
                 f['regularity_reliable'], f['tweet_avg_interval_seconds'], 
                 f['daily_score'], f['daily_cv_log'], f['internal_tweet_density'], 
                 f['profile_has_url'], f['geo_enabled_flag'], f['sensitive_rate'],
-                f['mobile_ratio'],f['web_ratio'],f['news_manager_ratio'], 
-                f['bot_api_ratio'],f['source_entropy'],
+                f['mobile_ratio'],f['web_ratio'],f['news_manager_ratio'],
+                f['bot_api_ratio'],f['source_entropy']
             ]
             for f in user_features_list
         ]
 
-        Writer.write_on_csv(os.sep.join([dir_path, "user_features"]), features_rows)
-        Writer.write_on_csv(os.sep.join([dir_path, "edges_retweet"]), edges_rt)
-        Writer.write_on_csv(os.sep.join([dir_path, "edges_reply"]), edges_reply)
-        Writer.write_on_csv(
-            os.sep.join([dir_path, "edges_mention_raw"]),
-            [(src, sn, w) for src, sn, w in mention_edges_raw]
-        )
-        Writer.write_on_csv(os.sep.join([dir_path, "screen_name_map"]), screen_names_list)
+        if self.file_format == "pickle":
+            user_features_header_checkpoint = [
+                'user_node_id', 'total', 'retweets', 'replies', 'original', 'likes', 'followers', 'following',
+                'verified', 'account_date', 'listed_count', 'favourites_count', 'reputation_score',
+                'n_unique_hashtags', 'n_unique_mentions', 'n_hashtags_total', 'hashtag_entropy',
+                'activation_age', 'tweet_regularity_score', 'regularity_reliable',
+                'tweet_avg_interval_seconds', 'daily_score', 'daily_cv_log', 'internal_tweet_density',
+                'profile_has_url', 'geo_enabled_flag', 'sensitive_rate', 'mobile_ratio', 'web_ratio',
+                'news_manager_ratio', 'bot_api_ratio', 'source_entropy'
+            ]
+            Writer.write_on_pickle(os.sep.join([dir_path, "user_features.pkl"]), features_rows, columns=user_features_header_checkpoint)
+            Writer.write_on_pickle(os.sep.join([dir_path, "edges_retweet.pkl"]), edges_rt, columns=['src', 'dst', 'weight', 'lifespan', 'fast_rt_ratio'])
+            Writer.write_on_pickle(os.sep.join([dir_path, "edges_reply.pkl"]), edges_reply, columns=['src', 'dst', 'weight', 'lifespan', 'avg_reply_latency_seconds'])
+            Writer.write_on_pickle(os.sep.join([dir_path, "edges_mention_raw.pkl"]), [(src, sn, w) for src, sn, w in mention_edges_raw], columns=['src', 'screen_name', 'weight'])
+            Writer.write_on_pickle(os.sep.join([dir_path, "screen_name_map.pkl"]), screen_names_list, columns=['screen_name', 'user_id'])
+        else:
+            Writer.write_on_csv(os.sep.join([dir_path, "user_features"]), features_rows)
+            Writer.write_on_csv(os.sep.join([dir_path, "edges_retweet"]), edges_rt)
+            Writer.write_on_csv(os.sep.join([dir_path, "edges_reply"]), edges_reply)
+            Writer.write_on_csv(
+                os.sep.join([dir_path, "edges_mention_raw"]),
+                [(src, sn, w) for src, sn, w in mention_edges_raw]
+            )
+            Writer.write_on_csv(os.sep.join([dir_path, "screen_name_map"]), screen_names_list)
 
     # ─────────────────────────────────────────────────────────────────────────
     # MERGE
@@ -595,13 +748,13 @@ class GraphGenerationUser(MongoConnection):
             if not os.path.isdir(batch_path):
                 continue
                 
-            map_file = os.sep.join([batch_path, "screen_name_map"])
+            map_file = os.sep.join([batch_path, "screen_name_map" + (".pkl" if self.file_format == "pickle" else "")])
             if os.path.exists(map_file):
                 for row in Writer.load_checkpoint_file(map_file):
                     screen_name = row[0].lower()
-                    uid_hash = int(row[1])
-                    screen_name_map[screen_name] = uid_hash
-                    valid_user_node_ids.add(Utils.to_node_id(uid_hash))
+                    uid = int(row[1])
+                    screen_name_map[screen_name] = uid
+                    valid_user_node_ids.add(Utils.to_node_id(uid) if self.file_format != 'pickle' else uid)
 
         resolved_mention = 0
         dropped_mention = 0
@@ -620,11 +773,11 @@ class GraphGenerationUser(MongoConnection):
             if not os.path.isdir(batch_path):
                 continue
 
-            feat_file = os.sep.join([batch_path, "user_features"])
+            feat_file = os.sep.join([batch_path, "user_features" + (".pkl" if self.file_format == "pickle" else "")])
             if os.path.exists(feat_file):
                 all_features.extend(Writer.load_checkpoint_file(feat_file))
 
-            rt_file = os.sep.join([batch_path, "edges_retweet"])
+            rt_file = os.sep.join([batch_path, "edges_retweet" + (".pkl" if self.file_format == "pickle" else "")])
             if os.path.exists(rt_file):
                 for row in Writer.load_checkpoint_file(rt_file):
                     if row[1] in valid_user_node_ids:
@@ -633,7 +786,7 @@ class GraphGenerationUser(MongoConnection):
                     else:
                         dropped_rt += 1
 
-            rep_file = os.sep.join([batch_path, "edges_reply"])
+            rep_file = os.sep.join([batch_path, "edges_reply" + (".pkl" if self.file_format == "pickle" else "")])
             if os.path.exists(rep_file):
                 for row in Writer.load_checkpoint_file(rep_file):
                     if row[1] in valid_user_node_ids:
@@ -642,13 +795,13 @@ class GraphGenerationUser(MongoConnection):
                     else:
                         dropped_reply += 1
 
-            men_file = os.sep.join([batch_path, "edges_mention_raw"])
+            men_file = os.sep.join([batch_path, "edges_mention_raw" + (".pkl" if self.file_format == "pickle" else "")])
             if os.path.exists(men_file):
                 for row in Writer.load_checkpoint_file(men_file):
                     src, screen_name, weight = row[0], row[1], row[2]
                     dst = screen_name_map.get(screen_name.lower())
                     if dst is not None:
-                        dst_node_id = Utils.to_node_id(dst)
+                        dst_node_id = Utils.to_node_id(dst) if self.file_format != 'pickle' else dst
                         all_mention.append((src, dst_node_id, weight))
                         received_mentions[dst_node_id] += int(float(weight))
                         resolved_mention += 1
@@ -661,39 +814,55 @@ class GraphGenerationUser(MongoConnection):
             rt_count = received_retweets.get(uid, 0)
             rep_count = received_replies.get(uid, 0)
             men_count = received_mentions.get(uid, 0)
-            
+
             row.insert(15, rt_count)
             row.insert(16, rep_count)
             row.insert(17, men_count)
 
         # Write CSV headers
         user_features_header = [
-            'user_node_id', 'total', 'retweets', 'replies', 'original', 'likes', 'followers', 'following',
-            'verified', 'account_date', 'listed_count', 'favourites_count', 'reputation_score',
-            'n_unique_hashtags', 'n_unique_mentions', 'received_retweets_total', 'received_reply_total', 
-            'received_mention_total', 'activation_age', 'tweet_regularity_score', 'regularity_reliable', 
-            'tweet_avg_interval_seconds', 'daily_score', 'daily_cv_log', 'internal_tweet_density', 
-            'profile_has_url', 'geo_enabled_flag', 'sensitive_rate', 'mobile_ratio', 'web_ratio', 
-            'news_manager_ratio', 'bot_api_ratio', 'source_entropy'
+                'user_node_id', 'total', 'retweets', 'replies',
+                'original', 'likes', 'followers', 'following',
+                'verified', 'account_date', 'listed_count',
+                'favourites_count', 'reputation_score',
+                'n_unique_hashtags', 'n_unique_mentions',
+                'n_hashtags_total', 'hashtag_entropy',
+                'activation_age', 'tweet_regularity_score',
+                'regularity_reliable', 'tweet_avg_interval_seconds', 
+                'daily_score', 'daily_cv_log', 'internal_tweet_density', 
+                'profile_has_url', 'geo_enabled_flag', 'sensitive_rate',
+                'mobile_ratio', 'web_ratio', 'news_manager_ratio',
+                'bot_api_ratio', 'source_entropy',
+                # Additionnal features computed at merge time:
+                'received_retweets', 'received_replies', 'received_mentions',
         ]
-        edge_header = ['src', 'dst', 'weight']
+        retweet_header = ['src', 'dst', 'weight', 'lifespan', 'avg_reply_latency_seconds']
+        reply_header = ['src', 'dst', 'weight', 'lifespan', 'fast_rt_ratio']
         mention_header = ['src', 'dst', 'weight']
         screen_name_map_header = ['screen_name', 'user_id']
 
-        Writer.write_on_csv(os.sep.join([out_dir, "user_features.csv"]), [user_features_header])
-        Writer.write_on_csv(os.sep.join([out_dir, "edges_retweet.csv"]), [edge_header])
-        Writer.write_on_csv(os.sep.join([out_dir, "edges_reply.csv"]), [edge_header])
-        Writer.write_on_csv(os.sep.join([out_dir, "edges_mention.csv"]), [mention_header])
-        Writer.write_on_csv(os.sep.join([out_dir, "screen_name_map.csv"]), [screen_name_map_header])
+        if self.file_format == "pickle":
+            Writer.write_on_pickle(os.sep.join([out_dir, "user_features.pkl"]), all_features, columns=user_features_header)
+            Writer.write_on_pickle(os.sep.join([out_dir, "edges_retweet.pkl"]), all_rt, columns=retweet_header)
+            Writer.write_on_pickle(os.sep.join([out_dir, "edges_reply.pkl"]), all_reply, columns=reply_header)
+            Writer.write_on_pickle(os.sep.join([out_dir, "edges_mention.pkl"]), all_mention, columns=mention_header)
+            map_rows = [(sn, (Utils.to_node_id(uid) if self.file_format != 'pickle' else uid)) for sn, uid in screen_name_map.items()]
+            Writer.write_on_pickle(os.sep.join([out_dir, "screen_name_map.pkl"]), map_rows, columns=screen_name_map_header)
+        else:
+            Writer.write_on_csv(os.sep.join([out_dir, "user_features.csv"]), [user_features_header])
+            Writer.write_on_csv(os.sep.join([out_dir, "edges_retweet.csv"]), [retweet_header])
+            Writer.write_on_csv(os.sep.join([out_dir, "edges_reply.csv"]), [reply_header])
+            Writer.write_on_csv(os.sep.join([out_dir, "edges_mention.csv"]), [mention_header])
+            Writer.write_on_csv(os.sep.join([out_dir, "screen_name_map.csv"]), [screen_name_map_header])
 
-        # Append data
-        Writer.write_on_csv(os.sep.join([out_dir, "user_features.csv"]), all_features)
-        Writer.write_on_csv(os.sep.join([out_dir, "edges_retweet.csv"]), all_rt)
-        Writer.write_on_csv(os.sep.join([out_dir, "edges_reply.csv"]), all_reply)
-        Writer.write_on_csv(os.sep.join([out_dir, "edges_mention.csv"]), all_mention)
+            # Append data
+            Writer.write_on_csv(os.sep.join([out_dir, "user_features.csv"]), all_features)
+            Writer.write_on_csv(os.sep.join([out_dir, "edges_retweet.csv"]), all_rt)
+            Writer.write_on_csv(os.sep.join([out_dir, "edges_reply.csv"]), all_reply)
+            Writer.write_on_csv(os.sep.join([out_dir, "edges_mention.csv"]), all_mention)
 
-        map_rows = [(sn, Utils.to_node_id(uid)) for sn, uid in screen_name_map.items()]
-        Writer.write_on_csv(os.sep.join([out_dir, "screen_name_map.csv"]), map_rows)
+            map_rows = [(sn, (Utils.to_node_id(uid) if self.file_format != 'pickle' else uid)) for sn, uid in screen_name_map.items()]
+            Writer.write_on_csv(os.sep.join([out_dir, "screen_name_map.csv"]), map_rows)
 
         # Metadata file useful for MLFlow, to get the name of the used collection
         import json
@@ -784,7 +953,8 @@ class GraphGenerationUser(MongoConnection):
                     f"{len(mention_raw)} mention edges."
                 )
                 self.save_checkpoint(
-                    features_list, edges_rt, edges_reply, mention_raw, screen_names_list, batch_id
+                    features_list, edges_rt, edges_reply, 
+                    mention_raw, screen_names_list, batch_id
                 )
                 features_list, edges_rt, edges_reply, mention_raw, screen_names_list = [], [], [], [], []
                 batch_id += 1
@@ -794,7 +964,8 @@ class GraphGenerationUser(MongoConnection):
         # Save remaining data
         if features_list:
             self.save_checkpoint(
-                features_list, edges_rt, edges_reply, mention_raw, screen_names_list, batch_id
+                features_list, edges_rt, edges_reply, 
+                mention_raw, screen_names_list, batch_id
             )
             batch_id += 1
 
