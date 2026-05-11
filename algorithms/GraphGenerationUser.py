@@ -5,8 +5,10 @@ import math
 import os
 import uuid
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from pymongo import ASCENDING
+from typing import Optional
+from pymongo import ASCENDING, DESCENDING, MongoClient
 from dateutil import parser  # Import to parse ISO dates
 import re
 import shutil
@@ -221,6 +223,19 @@ class GraphGenerationUser(MongoConnection):
         self.checkpoint_folder = "tmp"
         self.delete_tmp_after_merge = delete_tmp_after_merge
         self.file_format = file_format
+
+        # Stored for worker threads — each creates its own MongoClient
+        self._uri = uri
+        self._database_name = database_name
+        self._collection_name = collection
+        self._mongo_kwargs: dict = {}
+        if username:
+            self._mongo_kwargs["username"] = username
+            self._mongo_kwargs["password"] = password or ""
+        if auth_source:
+            self._mongo_kwargs["authSource"] = auth_source
+        if auth_mechanism:
+            self._mongo_kwargs["authMechanism"] = auth_mechanism
  
     # ─────────────────────────────────────────────────────────────────────────
     # HELPERS
@@ -746,73 +761,161 @@ class GraphGenerationUser(MongoConnection):
         )
 
     # ─────────────────────────────────────────────────────────────────────────
+    # PARALLEL WORKER
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _process_uid_range(self, worker_id: int, uid_start: int, uid_end: int,
+                           checkpoint_every: int, max_users: Optional[int]) -> int:
+        """
+        Worker: open an independent MongoDB connection and process all users
+        with user.id in [uid_start, uid_end).  Saves checkpoints with batch IDs
+        offset by worker_id * 1_000_000 to avoid collisions with other workers.
+        Returns the number of users processed.
+        """
+        client = MongoClient(self._uri, **self._mongo_kwargs)
+        col = client[self._database_name][self._collection_name]
+        _, proj = mongoQueries.extract_tweets_for_user_graph()
+
+        query  = {"user.id": {"$gte": uid_start, "$lt": uid_end}}
+        cursor = col.find(query, proj).sort("user.id", ASCENDING)
+
+        batch_offset = worker_id * 1_000_000
+        local_batch  = 0
+        features_list, edges_rt, edges_reply, mention_raw, screen_names_list = \
+            [], [], [], [], []
+        user_count = 0
+
+        try:
+            for user_id, user_tweets in itertools.groupby(
+                cursor, key=lambda t: t['user']['id']
+            ):
+                features, rt, rep, men = self.process_user_tweets(user_id, user_tweets)
+                if features is None:
+                    continue
+
+                sn = features.get('screen_name', '')
+                if sn:
+                    screen_names_list.append((sn.lower(), features['user_id']))
+
+                features_list.append(features)
+                edges_rt.extend(rt)
+                edges_reply.extend(rep)
+                mention_raw.extend(men)
+                user_count += 1
+
+                if user_count % checkpoint_every == 0:
+                    bid = batch_offset + local_batch
+                    self.logger.info(
+                        f"[Worker {worker_id} | Batch {bid}] {user_count} users | "
+                        f"{len(edges_rt)} RT | {len(edges_reply)} reply | "
+                        f"{len(mention_raw)} mention"
+                    )
+                    self.save_checkpoint(features_list, edges_rt, edges_reply,
+                                         mention_raw, screen_names_list, bid)
+                    features_list, edges_rt, edges_reply, mention_raw, screen_names_list = \
+                        [], [], [], [], []
+                    local_batch += 1
+
+                if max_users is not None and user_count >= max_users:
+                    self.logger.info(f"[Worker {worker_id}] Reached max_users={max_users}. Stopping.")
+                    break
+
+            if features_list:
+                self.save_checkpoint(features_list, edges_rt, edges_reply,
+                                     mention_raw, screen_names_list, batch_offset + local_batch)
+        finally:
+            client.close()
+
+        return user_count
+
+    # ─────────────────────────────────────────────────────────────────────────
     # MAIN ENTRY POINT
     # ─────────────────────────────────────────────────────────────────────────
 
-    def run(self, checkpoint_every: int = 500, max_users: int = None):
+    def run(self, checkpoint_every: int = 500, max_users: Optional[int] = None,
+            n_workers: int = 4):
         """
-        Main entry point. Streams tweets sorted by user.id and processes
-        one user at a time, writing checkpoints every `checkpoint_every` users.
- 
-        :param checkpoint_every: Users per checkpoint batch.
-        :param max_users: Hard limit on users processed (None = no limit).
+        Main entry point. Partitions the user.id range into `n_workers` slices
+        and processes each slice in parallel using ThreadPoolExecutor.
+        Each worker opens its own MongoDB connection to avoid contention.
+
+        :param checkpoint_every: Users per checkpoint batch (per worker).
+        :param max_users: Hard limit on total users processed (None = no limit).
+                          Divided evenly across workers.
+        :param n_workers: Number of parallel threads (= MongoDB connections).
         """
-        client = self.connect()
-        col    = self.get_db()[self.get_collection()]
-        _, proj = mongoQueries.extract_tweets_for_user_graph()
- 
         self.logger.info(
             f"[GraphGenerationUser] Starting extraction. "
             f"Run ID: {self.id}  Format: {self.file_format}"
         )
- 
-        cursor = col.find({}, proj).sort("user.id", ASCENDING)
- 
-        batch_id = user_count = 0
-        features_list, edges_rt, edges_reply, mention_raw, screen_names_list = \
-            [], [], [], [], []
- 
-        for user_id, user_tweets in itertools.groupby(
-            cursor, key=lambda t: t['user']['id']
-        ):
-            # Pass the iterator directly instead of list() to stream tweets one by one
-            features, rt, rep, men = self.process_user_tweets(user_id, user_tweets)
 
-            if features is None:
-                continue
- 
-            sn = features.get('screen_name', '')
-            if sn:
-                screen_names_list.append((sn.lower(), features['user_id']))
- 
-            features_list.append(features)
-            edges_rt.extend(rt)
-            edges_reply.extend(rep)
-            mention_raw.extend(men)
-            user_count += 1
- 
-            if user_count % checkpoint_every == 0:
-                self.logger.info(
-                    f"[Batch {batch_id}] {user_count} users | "
-                    f"{len(features_list)} feat | {len(edges_rt)} RT | "
-                    f"{len(edges_reply)} reply | {len(mention_raw)} mention"
-                )
-                self.save_checkpoint(features_list, edges_rt, edges_reply,
-                                     mention_raw, screen_names_list, batch_id)
-                features_list, edges_rt, edges_reply, mention_raw, screen_names_list = \
-                    [], [], [], [], []
-                batch_id += 1
- 
-            if max_users is not None and user_count >= max_users:
-                self.logger.info(f"Reached max_users={max_users}. Stopping.")
+        # ── Step 1: fetch the global user.id range (lightweight query) ────────
+        client = MongoClient(self._uri, **self._mongo_kwargs)
+        col = client[self._database_name][self._collection_name]
+
+        bounds = list(col.aggregate([
+            {"$group": {
+                "_id": None,
+                "min_uid": {"$min": "$user.id"},
+                "max_uid": {"$max": "$user.id"},
+            }}
+        ]))
+        client.close()
+
+        if not bounds:
+            self.logger.warning("Collection is empty — nothing to process.")
+            return
+
+        global_min = bounds[0]["min_uid"]
+        global_max = bounds[0]["max_uid"] + 1  # exclusive upper bound
+
+        self.logger.info(
+            f"user.id range: [{global_min}, {global_max}) — "
+            f"splitting across {n_workers} worker(s)."
+        )
+
+        # ── Step 2: split the id range evenly across workers ──────────────────
+        step = max(1, (global_max - global_min + n_workers - 1) // n_workers)
+        ranges = []
+        for i in range(n_workers):
+            uid_start = global_min + i * step
+            uid_end   = min(global_min + (i + 1) * step, global_max)
+            if uid_start >= global_max:
                 break
- 
-        if features_list:
-            self.save_checkpoint(features_list, edges_rt, edges_reply,
-                                 mention_raw, screen_names_list, batch_id)
-            batch_id += 1
- 
-        self.logger.info(f"{user_count} users processed ({batch_id} batches). Merging...")
+            ranges.append((i, uid_start, uid_end))
+
+        # Per-worker max_users cap (None = unlimited)
+        per_worker_max = (
+            (max_users + len(ranges) - 1) // len(ranges)
+            if max_users is not None else None
+        )
+
+        # ── Step 3: dispatch workers ───────────────────────────────────────────
+        total_users = 0
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            futures = {
+                executor.submit(
+                    self._process_uid_range,
+                    worker_id, uid_start, uid_end,
+                    checkpoint_every, per_worker_max,
+                ): worker_id
+                for worker_id, uid_start, uid_end in ranges
+            }
+            for future in as_completed(futures):
+                worker_id = futures[future]
+                try:
+                    count = future.result()
+                    total_users += count
+                    self.logger.info(
+                        f"[Worker {worker_id}] finished — {count} users processed."
+                    )
+                except Exception as exc:
+                    self.logger.error(
+                        f"[Worker {worker_id}] failed with exception: {exc}",
+                        exc_info=True,
+                    )
+
+        # ── Step 4: merge all checkpoints into final output ───────────────────
+        self.logger.info(f"{total_users} users processed in total. Merging...")
         self.merge_checkpoints()
         self.logger.info("Extraction complete.")
-        client.close()
