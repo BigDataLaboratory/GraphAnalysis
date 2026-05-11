@@ -37,5 +37,7 @@ jobs:
             --name graph_extraction \
             -v ~/extraction/output:/app/output \
             -v ${{ github.workspace }}/properties/$PROP_FILE:/app/properties/prop.json:ro \
-            -e MONGO_URI=${{ secrets.MONGO_URI }} \
+            -e MONGO_URI="${{ secrets.MONGO_URI }}" \
+            -e MONGO_USERNAME="${{ secrets.MONGO_USERNAME }}" \
+            -e MONGO_PASSWORD="${{ secrets.MONGO_PASSWORD }}" \
             graph_extraction
