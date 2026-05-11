@@ -171,7 +171,7 @@ USER_FEATURES_COLUMNS_FINAL = USER_FEATURES_COLUMNS + [
 ]
 EDGE_RETWEET_COLUMNS  = ['src', 'dst', 'weight', 'lifespan', 'fast_rt_ratio']
 EDGE_REPLY_COLUMNS    = ['src', 'dst', 'weight', 'lifespan', 'avg_reply_latency_seconds']
-EDGE_MENTION_COLUMNS  = ['src', 'dst', 'weight', 'mention_regularity', 'mention_in_reply_ratio', 'mention_solo_ratio']
+EDGE_MENTION_COLUMNS  = ['src', 'dst', 'weight', 'mention_regularity', 'mention_burstiness', 'mention_in_reply_ratio', 'mention_solo_ratio']
 SCREEN_NAME_COLUMNS   = ['screen_name', 'user_id']
 
 
@@ -555,26 +555,37 @@ class GraphGenerationUser(MongoConnection):
             l = reply_last_ts.get(dst_uid)
             return log1p(l - f) if f is not None and l is not None and l >= f else 0.0
 
-        def _mention_regularity(screen_name):
+        def _mention_metrics(screen_name):
             ts_list = mention_ts.get(screen_name, [])
             if len(ts_list) < 2:
-                return 0.0
+                return 0.0, 0.0
             ts_sorted = sorted(ts_list)
             intervals = np.diff(ts_sorted)
-            if len(intervals) < 2:
-                return 0.0
-            sd = float(np.std(intervals))
-            return round(sd, 4)
+            if len(intervals) < 1:
+                return 0.0, 0.0
+            
+            sd_i = float(np.std(intervals))
+            mean_i = float(np.mean(intervals))
+            
+            # Mention Regularity: log1p(SD)
+            regularity = log1p(sd_i)
+            
+            # Burstiness Index: log1p((SD - Mean) / (SD + Mean))
+            # Note: We use log1p(index + 1) to handle the range [-1, 1] safely
+            raw_burstiness = (sd_i - mean_i) / (sd_i + mean_i) if (sd_i + mean_i) > 0 else 0.0
+            burstiness = log1p(raw_burstiness + 1) # Range [0, log(3)]
+            
+            return round(regularity, 4), round(burstiness, 4)
 
         def _mention_in_reply_ratio(screen_name):
             total = mention_targets.get(screen_name, 0)
             inside = mention_in_reply_count.get(screen_name, 0)
-            return round(inside / total, 4) if total > 0 else 0.0
+            return log1p(inside / total) if total > 0 else 0.0
 
         def _mention_solo_ratio(screen_name):
             total = mention_targets.get(screen_name, 0)
             solo  = mention_solo_count.get(screen_name, 0)
-            return round(solo / total, 4) if total > 0 else 0.0
+            return log1p(solo / total) if total > 0 else 0.0
 
         # Retweet and reply edges — node IDs in hex for compact CSV output
         edges_retweet = [(
@@ -592,14 +603,18 @@ class GraphGenerationUser(MongoConnection):
 
              _avg_reply_latency(dst)
         ) for dst, weight in reply_targets.items()]
-        mention_edges_raw = [(
-            src_node_id,
-            screen_name,
-            weight,
-            _mention_regularity(screen_name),
-            _mention_in_reply_ratio(screen_name),
-            _mention_solo_ratio(screen_name),
-        ) for screen_name, weight in mention_targets.items()]
+        mention_edges_raw = []
+        for screen_name, weight in mention_targets.items():
+            reg, burst = _mention_metrics(screen_name)
+            mention_edges_raw.append((
+                src_node_id,
+                screen_name,
+                weight,
+                reg,
+                burst,
+                _mention_in_reply_ratio(screen_name),
+                _mention_solo_ratio(screen_name),
+            ))
 
         return features, edges_retweet, edges_reply, mention_edges_raw
 
@@ -724,10 +739,13 @@ class GraphGenerationUser(MongoConnection):
             men_file = os.path.join(batch_path, "edges_mention_raw" + ext)
             if os.path.exists(men_file):
                 for row in Writer.load_checkpoint_file(men_file):
+                    # row contient: [src, screen_name, weight, regularity, burstiness, in_reply_ratio, solo_ratio]
                     src, sn, weight = row[0], row[1], row[2]
+                    metrics = row[3:] 
+                    
                     dst = screen_name_map.get(sn.lower())
                     if dst is not None:
-                        all_mention.append((src, dst, weight))
+                        all_mention.append((src, dst, weight, *metrics))
                         received_mentions[dst] += int(float(weight))
                         resolved_mention += 1
                     else:

@@ -63,6 +63,7 @@ if __name__ == '__main__':
     source_db_name        = os.getenv("MONGO_DATABASE", config.get("db_name"))
     source_collection     = os.getenv("MONGO_COLLECTION", config.get("collection"))
     source_auth_source    = os.getenv("MONGO_AUTH_SOURCE", config.get("authName"))
+    source_auth_mechanism = os.getenv("MONGO_AUTH_MECHANISM", config.get("authMechanism"))
     source_chunk_start_date = datetime.strptime(config["chunk_start_date"], '%d/%m/%Y')
     source_chunk_end_date = datetime.strptime(config["chunk_end_date"], '%d/%m/%Y')
     source_method = config["method"]
