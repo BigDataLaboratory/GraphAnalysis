@@ -51,8 +51,9 @@ class GraphAnalysis:
                     delete_tmp_after_merge=delete_tmp,
                     intermediate_file_format=intermediate_fmt,
                     final_file_format=final_fmt,
+                    fast_rt_threshold=p.fast_rt_threshold,
                 )
-                ggu.run(checkpoint_every=p.checkpoint_every)
+                ggu.run(checkpoint_every=p.checkpoint_every, n_workers=p.n_workers)
 
             # Typed edge extraction (retweet / mention / response / hashtag …)
             needs_graph_generation = any([

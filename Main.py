@@ -55,6 +55,8 @@ if __name__ == '__main__':
 
     config = prop["graph_generation"]["parameters"]["input"]["conf"]
     checkpoint_every = prop["graph_generation"]["parameters"].get("checkpoint_every", 5000)
+    n_workers = prop["graph_generation"]["parameters"].get("n_workers", 4)
+    fast_rt_threshold = prop["graph_generation"]["parameters"].get("fast_rt_threshold", 60)
     source_input_type = prop["graph_generation"]["parameters"]["input"]["type"]
         # for docker/podman, to safely inject database credentials
     source_uri            = os.getenv("MONGO_URI", config.get("uri"))
@@ -143,6 +145,8 @@ if __name__ == '__main__':
         # Graph generation parameters
         "delete_tmp_after_merge",
         "checkpoint_every",
+        "n_workers",
+        "fast_rt_threshold",
         "source_input_type",
         "source_uri",
         "source_username",
@@ -215,6 +219,8 @@ if __name__ == '__main__':
                    # Graph generation parameters
                    delete_tmp_after_merge,
                    checkpoint_every,
+                   n_workers,
+                   fast_rt_threshold,
                    source_input_type,
                    source_uri,
                    source_username,

@@ -12,6 +12,7 @@ from pymongo import ASCENDING, DESCENDING, MongoClient
 from dateutil import parser  # Import to parse ISO dates
 import re
 import shutil
+import time
 
 import numpy as np
 import sys
@@ -201,7 +202,7 @@ class GraphGenerationUser(MongoConnection):
                  username=None, password=None, auth_source=None, auth_mechanism=None,
                  delete_tmp_after_merge=False,
                  intermediate_file_format="feather", final_file_format="parquet",
-                 file_format=None):
+                 file_format=None, fast_rt_threshold=60):
         """
         :param uri: MongoDB connection URI.
         :param database_name: Name of the MongoDB database.
@@ -233,6 +234,7 @@ class GraphGenerationUser(MongoConnection):
         self.delete_tmp_after_merge = delete_tmp_after_merge
         self.file_format = intermediate_file_format        # used by _write (checkpoints)
         self.final_file_format = final_file_format         # used by _write_final (merge output)
+        self.fast_rt_threshold = fast_rt_threshold
 
         # Stored for worker threads — each creates its own MongoClient
         self._uri = uri
@@ -371,12 +373,15 @@ class GraphGenerationUser(MongoConnection):
                 n_retweets += 1
                 rt_uid = tweet['retweeted_status']['user']['id']
                 retweet_targets[rt_uid] += 1
+                rs = tweet.get('retweeted_status') or {}
+                
                 retweet_first_ts[rt_uid] = min(retweet_first_ts.get(rt_uid, ts), ts)
                 retweet_last_ts[rt_uid]  = max(retweet_last_ts.get(rt_uid, ts), ts)
                 retweet_ts_per_edge[rt_uid].append(ts)
+                
                 # Topic Consistency: collect hashtags from the tweet (root usually has them even for RTs)
                 # Fallback to retweeted_status if root is empty
-                rt_ht_raw = tweet.get('hashtagEntities') or (tweet.get('retweeted_status') or {}).get('hashtagEntities', '')
+                rt_ht_raw = tweet.get('hashtagEntities') or rs.get('hashtagEntities', '')
                 if isinstance(rt_ht_raw, str) and rt_ht_raw.strip():
                     for ht in rt_ht_raw.split('|'):
                         ht = ht.strip().lower()
@@ -389,7 +394,7 @@ class GraphGenerationUser(MongoConnection):
                         orig_dt = Utils.to_datetime(orig_created)
                         if orig_dt:
                             latency = ts - orig_dt.timestamp()
-                            if 0 <= latency <= FAST_RT_THRESHOLD:
+                            if 0 <= latency <= self.fast_rt_threshold:
                                 retweet_fast_count[rt_uid] += 1
                 except Exception:
                     pass
@@ -1088,7 +1093,7 @@ class GraphGenerationUser(MongoConnection):
         self.logger.info(
             f"{total_users} users processed in total in "
             f"{int(extr_h):02}:{int(extr_m):02}:{int(extr_s):02}. "
-            f"Starting merge (checkpoints: {self.file_format} → final: {self.final_file_format})..."
+            f"Starting merge (checkpoints: {self.file_format} -> final: {self.final_file_format})..."
         )
         self.merge_checkpoints()
         self.logger.info("Extraction complete.")

@@ -5,9 +5,11 @@
   },
   "graph_generation": {
     "to_execute": true,
-    "delete_tmp_after_merge": true,
+    "delete_tmp_after_merge": false,
     "parameters": {
       "checkpoint_every": 500,
+      "n_workers": 12,
+      "fast_rt_threshold": 60,
       "input": {
         "type": "json",
         "conf": {
@@ -45,7 +47,7 @@
           "multigraph": "multigraph"
         },
         "map_file_name_prefix": "map",
-        "intermediate_file_format": "feather",
+        "intermediate_file_format": "parquet",
         "final_file_format": "parquet"
       }
     }
