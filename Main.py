@@ -85,7 +85,12 @@ if __name__ == '__main__':
         "hashtag_cooccurrences"]
     output_multi_graph_path = prop["graph_generation"]["parameters"]["output"]["graph_file_name"]["multigraph"]
     output_map_prefix = prop["graph_generation"]["parameters"]["output"]["map_file_name_prefix"]
-    output_file_format = prop["graph_generation"]["parameters"]["output"]["file_format"]
+    # Support both legacy single format and new split intermediate/final formats
+    _out_cfg = prop["graph_generation"]["parameters"]["output"]
+    output_intermediate_format = _out_cfg.get("intermediate_file_format",
+                                               _out_cfg.get("file_format", "parquet"))
+    output_final_format        = _out_cfg.get("final_file_format",
+                                               _out_cfg.get("file_format", "parquet"))
 
     # Community detection parameters
     community_config = prop["community_detection"]["parameters"]
@@ -164,7 +169,8 @@ if __name__ == '__main__':
         "output_hashtag_cooccurrences_graph_path",
         "output_multi_graph_path",
         "output_map_prefix",
-        "output_file_format",
+        "output_intermediate_format",
+        "output_final_format",
         # Community detection parameters
         "do_read_graph_from_file",
         "do_read_from_edge_list",
@@ -235,7 +241,8 @@ if __name__ == '__main__':
                    output_hashtag_cooccurrences_graph_path,
                    output_multi_graph_path,
                    output_map_prefix,
-                   output_file_format,
+                   output_intermediate_format,
+                   output_final_format,
                    # Community detection parameters
                    do_read_graph_from_file,
                    do_read_from_edge_list,

@@ -22,13 +22,15 @@ class GraphAnalysis:
         import time
         start_time = time.time()
 
-        # ── Resolve and validate file_format ──────────────────────────────────
-        file_format = getattr(self.parameters, "output_file_format", "csv")
-        if file_format not in SUPPORTED_FORMATS:
-            raise ValueError(
-                f"Unsupported file_format '{file_format}'. "
-                f"Choose from {SUPPORTED_FORMATS}."
-            )
+        # ── Resolve and validate file formats ──────────────────────────────────────────
+        intermediate_fmt = getattr(self.parameters, "output_intermediate_format", "feather")
+        final_fmt        = getattr(self.parameters, "output_final_format",        "parquet")
+        for fmt in (intermediate_fmt, final_fmt):
+            if fmt not in SUPPORTED_FORMATS:
+                raise ValueError(
+                    f"Unsupported file_format '{fmt}'. "
+                    f"Choose from {SUPPORTED_FORMATS}."
+                )
 
         # ── Graph Generation ──────────────────────────────────────────────────
         if self.parameters.do_graph_generation:
@@ -47,7 +49,8 @@ class GraphAnalysis:
                     collection=p.source_collection,
                     output_file_path=p.output_graph_path,
                     delete_tmp_after_merge=delete_tmp,
-                    file_format=file_format,
+                    intermediate_file_format=intermediate_fmt,
+                    final_file_format=final_fmt,
                 )
                 ggu.run(checkpoint_every=p.checkpoint_every)
 
@@ -81,7 +84,7 @@ class GraphAnalysis:
                     hashtag_cooccurrences=p.do_hashtag_cooccurrences_graph,
                     response=p.do_response_graph,
                     mention=p.do_mention_graph,
-                    file_format=file_format,
+                    file_format=final_fmt,
                 )
                 w, s = mongoQueries.extract_tweets_if_contains_hashtags_or_is_retweet_or_reply()
                 gg.query_data_in_chunks(w, s, method=p.source_method)

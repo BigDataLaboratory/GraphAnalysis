@@ -27,12 +27,12 @@ from algorithms.EdgeToGraph import EdgeToGraph
 # ─────────────────────────────────────────────────────────────────────────────
 # Supported formats
 # ─────────────────────────────────────────────────────────────────────────────
-SUPPORTED_FORMATS = ("csv", "pickle", "parquet")
+SUPPORTED_FORMATS = ("csv", "pickle", "parquet", "feather")
 
 
 def _ext(file_format: str) -> str:
     """Return the file extension for the given format."""
-    return {"csv": ".csv", "pickle": ".pkl", "parquet": ".parquet"}[file_format]
+    return {"csv": ".csv", "pickle": ".pkl", "parquet": ".parquet", "feather": ".feather"}[file_format]
 
 
 class Writer:
@@ -102,6 +102,34 @@ class Writer:
             with pq.ParquetWriter(sink, table.schema, compression='snappy') as pw:
                 pw.write_table(table)
 
+    @staticmethod
+    def write_on_feather(file_path: str, rows: list, columns: list = None) -> None:
+        """
+        Append a batch of rows to a Feather v2 file (LZ4 compression).
+        Feather is optimised for fast sequential read/write — ideal for checkpoints.
+
+        :param file_path: Path with or without .feather extension.
+        :param rows: List of rows (lists or tuples).
+        :param columns: Column names; positional fallback if None.
+        """
+        if not rows:
+            return
+        import pyarrow.feather as feather
+        path = file_path if file_path.endswith(".feather") else file_path + ".feather"
+        df = pd.DataFrame(rows, columns=columns)
+        for col in df.columns:
+            try:
+                df[col] = pd.to_numeric(df[col])
+                if pd.api.types.is_integer_dtype(df[col]):
+                    df[col] = pd.to_numeric(df[col], downcast='integer')
+            except (ValueError, TypeError):
+                pass
+        if os.path.exists(path):
+            # Feather doesn't support append natively — load, concat, rewrite
+            existing = feather.read_feather(path)
+            df = pd.concat([existing, df], ignore_index=True)
+        feather.write_feather(df, path, compression='lz4')
+
     # ─────────────────────────────────────────────────────────────────────────
     # UNIFIED WRITE / LOAD
     # ─────────────────────────────────────────────────────────────────────────
@@ -115,8 +143,8 @@ class Writer:
 
         :param file_path: Base path **without** extension.
         :param rows: List of rows to write.
-        :param columns: Column names (required for parquet; optional for others).
-        :param file_format: One of 'csv', 'pickle', 'parquet'.
+        :param columns: Column names (required for parquet/feather; optional for others).
+        :param file_format: One of 'csv', 'pickle', 'parquet', 'feather'.
         :raises ValueError: If file_format is not supported.
         """
         if file_format not in SUPPORTED_FORMATS:
@@ -126,6 +154,8 @@ class Writer:
             Writer.write_on_parquet(file_path, rows, columns)
         elif file_format == "pickle":
             Writer.write_on_pickle(file_path, rows, columns)
+        elif file_format == "feather":
+            Writer.write_on_feather(file_path, rows, columns)
         else:
             Writer.write_on_csv(file_path, rows)
 
@@ -149,6 +179,9 @@ class Writer:
             return rows
         elif file_path.endswith('.parquet'):
             return pd.read_parquet(file_path).values.tolist()
+        elif file_path.endswith('.feather'):
+            import pyarrow.feather as feather
+            return feather.read_feather(file_path).values.tolist()
         else:
             with open(file_path, mode='r', newline='', encoding='utf-8',
                       errors='replace') as f:

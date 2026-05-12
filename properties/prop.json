@@ -45,7 +45,8 @@
           "multigraph": "multigraph"
         },
         "map_file_name_prefix": "map",
-        "file_format": "parquet"
+        "intermediate_file_format": "feather",
+        "final_file_format": "parquet"
       }
     }
   },

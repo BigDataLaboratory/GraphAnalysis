@@ -169,9 +169,9 @@ USER_FEATURES_COLUMNS = [
 USER_FEATURES_COLUMNS_FINAL = USER_FEATURES_COLUMNS + [
     'received_retweets', 'received_replies', 'received_mentions',
 ]
-EDGE_RETWEET_COLUMNS  = ['src', 'dst', 'weight', 'lifespan', 'fast_rt_ratio']
-EDGE_REPLY_COLUMNS    = ['src', 'dst', 'weight', 'lifespan', 'avg_reply_latency_seconds']
-EDGE_MENTION_COLUMNS  = ['src', 'dst', 'weight', 'mention_regularity', 'mention_burstiness', 'mention_in_reply_ratio', 'mention_solo_ratio']
+EDGE_RETWEET_COLUMNS  = ['src', 'dst', 'weight', 'lifespan', 'fast_rt_ratio', 'rt_cadence', 'rt_temporal_jitter', 'rt_topic_consistency']
+EDGE_REPLY_COLUMNS    = ['src', 'dst', 'weight', 'lifespan', 'avg_reply_latency_seconds', 'reply_regularity', 'reply_burstiness', 'reply_diurnal_sync']
+EDGE_MENTION_COLUMNS  = ['src', 'dst', 'weight', 'mention_lifespan', 'mention_regularity', 'mention_burstiness', 'mention_in_reply_ratio', 'mention_solo_ratio']
 SCREEN_NAME_COLUMNS   = ['screen_name', 'user_id']
 
 
@@ -199,7 +199,9 @@ class GraphGenerationUser(MongoConnection):
 
     def __init__(self, uri, database_name, collection, output_file_path,
                  username=None, password=None, auth_source=None, auth_mechanism=None,
-                 delete_tmp_after_merge=False, file_format="csv"):
+                 delete_tmp_after_merge=False,
+                 intermediate_file_format="feather", final_file_format="parquet",
+                 file_format=None):
         """
         :param uri: MongoDB connection URI.
         :param database_name: Name of the MongoDB database.
@@ -210,19 +212,27 @@ class GraphGenerationUser(MongoConnection):
         :param auth_source: Authentication source (optional).
         :param auth_mechanism: Authentication mechanism (optional).
         :param delete_tmp_after_merge: Whether to delete the tmp folder after merging.
-        :param file_format: Output format — one of 'csv', 'pickle', 'parquet'.
-        :raises ValueError: If file_format is not supported.
+        :param intermediate_file_format: Format for checkpoint files ('feather' recommended).
+        :param final_file_format: Format for final merged output ('parquet' recommended).
+        :param file_format: Legacy alias — sets both formats if provided.
+        :raises ValueError: If any format is not supported.
         """
-        if file_format not in SUPPORTED_FORMATS:
-            raise ValueError(f"Unsupported file_format '{file_format}'. "
-                             f"Choose from {SUPPORTED_FORMATS}.")
+        # Legacy compatibility: if only file_format is passed, use it for both
+        if file_format is not None:
+            intermediate_file_format = file_format
+            final_file_format = file_format
+        for fmt in (intermediate_file_format, final_file_format):
+            if fmt not in SUPPORTED_FORMATS:
+                raise ValueError(f"Unsupported file_format '{fmt}'. "
+                                 f"Choose from {SUPPORTED_FORMATS}.")
         super().__init__(uri, username, password, auth_source, auth_mechanism,
                          db=None, database_name=database_name, collection=collection)
         self.output_file_path = output_file_path
         self.id = uuid.uuid1().hex
         self.checkpoint_folder = "tmp"
         self.delete_tmp_after_merge = delete_tmp_after_merge
-        self.file_format = file_format
+        self.file_format = intermediate_file_format        # used by _write (checkpoints)
+        self.final_file_format = final_file_format         # used by _write_final (merge output)
 
         # Stored for worker threads — each creates its own MongoClient
         self._uri = uri
@@ -253,9 +263,14 @@ class GraphGenerationUser(MongoConnection):
         return os.sep.join([self.output_file_path, self.id, name])
 
     def _write(self, base_path: str, rows: list, columns: list) -> None:
-        """Write rows using the configured file_format."""
+        """Write checkpoint rows using the intermediate file format."""
         Writer.write_data(base_path, rows,
                           columns=columns, file_format=self.file_format)
+
+    def _write_final(self, base_path: str, rows: list, columns: list) -> None:
+        """Write final merged output using the final file format."""
+        Writer.write_data(base_path, rows,
+                          columns=columns, file_format=self.final_file_format)
 
     def _glob_checkpoints(self, batch_path: str, name: str) -> str:
         """Return the full path (with extension) of a checkpoint file if it exists."""
@@ -294,10 +309,14 @@ class GraphGenerationUser(MongoConnection):
         reply_last_ts     = {}
         reply_latency_sum = defaultdict(float)
         reply_latency_count = defaultdict(int)
+        reply_ts_per_edge = defaultdict(list)   # uid -> list of reply timestamps (for regularity/burstiness)
+        reply_hours_per_edge = defaultdict(list)  # uid -> list of reply hours (for diurnal synchronicity)
 
         retweet_first_ts  = {}
         retweet_last_ts   = {}
         retweet_fast_count = defaultdict(int)
+        retweet_ts_per_edge = defaultdict(list)  # uid -> list of retweet timestamps (for cadence/jitter)
+        retweet_hashtags_per_edge = defaultdict(lambda: Counter())  # uid -> Counter of hashtags in RTs
         FAST_RT_THRESHOLD = 30  # seconds
 
         seen_tweet_ids = set()
@@ -354,9 +373,17 @@ class GraphGenerationUser(MongoConnection):
                 retweet_targets[rt_uid] += 1
                 retweet_first_ts[rt_uid] = min(retweet_first_ts.get(rt_uid, ts), ts)
                 retweet_last_ts[rt_uid]  = max(retweet_last_ts.get(rt_uid, ts), ts)
+                retweet_ts_per_edge[rt_uid].append(ts)
+                # Topic Consistency: collect hashtags from the tweet (root usually has them even for RTs)
+                # Fallback to retweeted_status if root is empty
+                rt_ht_raw = tweet.get('hashtagEntities') or (tweet.get('retweeted_status') or {}).get('hashtagEntities', '')
+                if isinstance(rt_ht_raw, str) and rt_ht_raw.strip():
+                    for ht in rt_ht_raw.split('|'):
+                        ht = ht.strip().lower()
+                        if ht:
+                            retweet_hashtags_per_edge[rt_uid][ht] += 1
                 # Fast-RT detection
                 try:
-                    rs = tweet.get('retweeted_status') or {}
                     orig_created = rs.get('created_at')
                     if orig_created:
                         orig_dt = Utils.to_datetime(orig_created)
@@ -374,6 +401,8 @@ class GraphGenerationUser(MongoConnection):
                     reply_targets[reply_uid] += 1
                     reply_first_ts[reply_uid] = min(reply_first_ts.get(reply_uid, ts), ts)
                     reply_last_ts[reply_uid]  = max(reply_last_ts.get(reply_uid, ts), ts)
+                    reply_ts_per_edge[reply_uid].append(ts)
+                    reply_hours_per_edge[reply_uid].append(datetime.fromtimestamp(ts, tz=timezone.utc).hour)
                     parent_created = tweet.get('in_reply_to_status_created_at')
                     if parent_created:
                         try:
@@ -489,7 +518,9 @@ class GraphGenerationUser(MongoConnection):
             hashtag_entropy = 0.0
 
         def log1p(x):
-            return round(math.log1p(x), 2)
+            # Clamp to avoid math domain error if x <= -1
+            safe_x = max(x, -0.9999)
+            return round(math.log1p(safe_x), 2)
 
         features = {
             'user_id':      user_id_int,
@@ -545,6 +576,26 @@ class GraphGenerationUser(MongoConnection):
             l = retweet_last_ts.get(dst_uid)
             return log1p(l - f) if f is not None and l is not None and l >= f else 0.0
 
+        def _rt_cadence_jitter(dst_uid):
+            """Retweet Cadence (mean interval) and Temporal Jitter (SD of intervals)."""
+            ts_list = retweet_ts_per_edge.get(dst_uid, [])
+            if len(ts_list) < 2:
+                return 0.0, 0.0
+            intervals = np.diff(sorted(ts_list))
+            cadence = log1p(float(np.mean(intervals)))
+            jitter  = log1p(float(np.std(intervals)))
+            return round(cadence, 4), round(jitter, 4)
+
+        def _rt_topic_consistency(dst_uid):
+            """Entropy of hashtags in retweeted content (Topic Consistency)."""
+            counter = retweet_hashtags_per_edge.get(dst_uid)
+            if not counter or len(counter) == 0:
+                return 0.0
+            total = sum(counter.values())
+            probs = np.array([c / total for c in counter.values()])
+            entropy = -float(np.sum(probs * np.log2(probs + 1e-12)))
+            return round(entropy, 4)
+
         def _avg_reply_latency(dst_uid):
             s = reply_latency_sum.get(dst_uid, 0)
             c = reply_latency_count.get(dst_uid, 1)
@@ -554,6 +605,43 @@ class GraphGenerationUser(MongoConnection):
             f = reply_first_ts.get(dst_uid)
             l = reply_last_ts.get(dst_uid)
             return log1p(l - f) if f is not None and l is not None and l >= f else 0.0
+
+        def _reply_regularity_burstiness(dst_uid):
+            """Reply Regularity (SD of intervals) and Reply Burstiness Index."""
+            ts_list = reply_ts_per_edge.get(dst_uid, [])
+            if len(ts_list) < 2:
+                return 0.0, 0.0
+            intervals = np.diff(sorted(ts_list))
+            if len(intervals) < 1:
+                return 0.0, 0.0
+            sd_i = float(np.std(intervals))
+            mean_i = float(np.mean(intervals))
+            regularity = log1p(sd_i)
+            raw_burstiness = (sd_i - mean_i) / (sd_i + mean_i) if (sd_i + mean_i) > 0 else 0.0
+            # Burstiness range is [-1, 1]. Clamp for log1p safety.
+            burstiness = log1p(max(raw_burstiness, -0.9999))
+            return round(regularity, 4), round(burstiness, 4)
+
+        def _reply_diurnal_sync(dst_uid):
+            """Diurnal Synchronicity: entropy of hourly distribution of replies."""
+            hours = reply_hours_per_edge.get(dst_uid, [])
+            if len(hours) < 2:
+                return 0.0
+            counts = np.bincount(hours, minlength=24).astype(float)
+            total = counts.sum()
+            if total == 0:
+                return 0.0
+            probs = counts / total
+            probs = probs[probs > 0]  # filter zeros for log
+            entropy = -float(np.sum(probs * np.log2(probs)))
+            return round(log1p(entropy), 4)
+
+        def _mention_lifespan(screen_name):
+            """Mention Lifespan: duration between first and last mention."""
+            ts_list = mention_ts.get(screen_name, [])
+            if len(ts_list) < 2:
+                return 0.0
+            return log1p(max(ts_list) - min(ts_list))
 
         def _mention_metrics(screen_name):
             ts_list = mention_ts.get(screen_name, [])
@@ -571,9 +659,8 @@ class GraphGenerationUser(MongoConnection):
             regularity = log1p(sd_i)
             
             # Burstiness Index: log1p((SD - Mean) / (SD + Mean))
-            # Note: We use log1p(index + 1) to handle the range [-1, 1] safely
             raw_burstiness = (sd_i - mean_i) / (sd_i + mean_i) if (sd_i + mean_i) > 0 else 0.0
-            burstiness = log1p(raw_burstiness + 1) # Range [0, log(3)]
+            burstiness = log1p(max(raw_burstiness, -0.9999))
             
             return round(regularity, 4), round(burstiness, 4)
 
@@ -587,22 +674,37 @@ class GraphGenerationUser(MongoConnection):
             solo  = mention_solo_count.get(screen_name, 0)
             return log1p(solo / total) if total > 0 else 0.0
 
-        # Retweet and reply edges — node IDs in hex for compact CSV output
-        edges_retweet = [(
-            src_node_id,
-            int(dst),
-            weight,
-             _rt_lifespan(dst),
-             _fast_rt_ratio(dst)
-        ) for dst, weight in retweet_targets.items()]
-        edges_reply = [
-            (src_node_id,
-             int(dst),
-             weight,
-             _reply_lifespan(dst),
+        # Retweet edges
+        edges_retweet = []
+        for dst, weight in retweet_targets.items():
+            cadence, jitter = _rt_cadence_jitter(dst)
+            edges_retweet.append((
+                src_node_id,
+                int(dst),
+                weight,
+                _rt_lifespan(dst),
+                _fast_rt_ratio(dst),
+                cadence,
+                jitter,
+                _rt_topic_consistency(dst),
+            ))
 
-             _avg_reply_latency(dst)
-        ) for dst, weight in reply_targets.items()]
+        # Reply edges
+        edges_reply = []
+        for dst, weight in reply_targets.items():
+            reg, burst = _reply_regularity_burstiness(dst)
+            edges_reply.append((
+                src_node_id,
+                int(dst),
+                weight,
+                _reply_lifespan(dst),
+                _avg_reply_latency(dst),
+                reg,
+                burst,
+                _reply_diurnal_sync(dst),
+            ))
+
+        # Mention edges
         mention_edges_raw = []
         for screen_name, weight in mention_targets.items():
             reg, burst = _mention_metrics(screen_name)
@@ -610,6 +712,7 @@ class GraphGenerationUser(MongoConnection):
                 src_node_id,
                 screen_name,
                 weight,
+                _mention_lifespan(screen_name),
                 reg,
                 burst,
                 _mention_in_reply_ratio(screen_name),
@@ -628,14 +731,14 @@ class GraphGenerationUser(MongoConnection):
         Persist intermediate results for one batch to disk.
         The file format (csv / pickle / parquet) is determined by self.file_format.
         """
-        dir_path = os.sep.join([
+        dir_path = os.path.join(
             self.output_file_path, self.checkpoint_folder,
-            self.id, str(batch_id),
-        ])
+            self.id, str(batch_id)
+        )
         os.makedirs(dir_path, exist_ok=True)
 
         def _base(name):
-            return os.sep.join([dir_path, name])
+            return os.path.join(dir_path, name)
 
         features_rows = [
             [
@@ -672,13 +775,17 @@ class GraphGenerationUser(MongoConnection):
         Merge all batch checkpoints into final output files.
         Resolves mention screen_names to user_ids and injects in-degree counts.
         """
-        checkpoint_dir = os.sep.join([
-            self.output_file_path, self.checkpoint_folder, self.id,
-        ])
-        out_dir = os.sep.join([self.output_file_path, self.id])
+        checkpoint_dir = os.path.join(
+            self.output_file_path, self.checkpoint_folder, self.id
+        )
+        out_dir = os.path.join(self.output_file_path, self.id)
         os.makedirs(out_dir, exist_ok=True)
 
         ext = _ext(self.file_format)
+
+        if not os.path.exists(checkpoint_dir):
+            self.logger.warning(f"Checkpoint directory {checkpoint_dir} not found. Nothing to merge.")
+            return
 
         self.logger.info("Merging checkpoints...")
 
@@ -739,7 +846,7 @@ class GraphGenerationUser(MongoConnection):
             men_file = os.path.join(batch_path, "edges_mention_raw" + ext)
             if os.path.exists(men_file):
                 for row in Writer.load_checkpoint_file(men_file):
-                    # row contient: [src, screen_name, weight, regularity, burstiness, in_reply_ratio, solo_ratio]
+                    # row: [src, screen_name, weight, lifespan, regularity, burstiness, in_reply_ratio, solo_ratio]
                     src, sn, weight = row[0], row[1], row[2]
                     metrics = row[3:] 
                     
@@ -758,12 +865,12 @@ class GraphGenerationUser(MongoConnection):
             row.append(received_replies.get(uid, 0))
             row.append(received_mentions.get(uid, 0))
 
-        # ── Write final files ─────────────────────────────────────────────────
+        # ── Write final files (using final_file_format) ───────────────────────
         def _out(name):
-            return os.sep.join([out_dir, name])
+            return os.path.join(out_dir, name)
 
         # For CSV: write header first, then data (append mode)
-        if self.file_format == "csv":
+        if self.final_file_format == "csv":
             Writer.write_on_csv(_out("user_features.csv"),
                                 [USER_FEATURES_COLUMNS_FINAL])
             Writer.write_on_csv(_out("edges_retweet.csv"),  [EDGE_RETWEET_COLUMNS])
@@ -778,23 +885,24 @@ class GraphGenerationUser(MongoConnection):
             Writer.write_on_csv(_out("screen_name_map.csv"), map_rows)
         else:
             # pickle / parquet: columns are stored in the file metadata
-            self._write(_out("user_features"),
-                        all_features, USER_FEATURES_COLUMNS_FINAL)
-            self._write(_out("edges_retweet"),  all_rt,     EDGE_RETWEET_COLUMNS)
-            self._write(_out("edges_reply"),    all_reply,  EDGE_REPLY_COLUMNS)
-            self._write(_out("edges_mention"),  all_mention, EDGE_MENTION_COLUMNS)
+            self._write_final(_out("user_features"),
+                              all_features, USER_FEATURES_COLUMNS_FINAL)
+            self._write_final(_out("edges_retweet"),  all_rt,     EDGE_RETWEET_COLUMNS)
+            self._write_final(_out("edges_reply"),    all_reply,  EDGE_REPLY_COLUMNS)
+            self._write_final(_out("edges_mention"),  all_mention, EDGE_MENTION_COLUMNS)
             map_rows = list(screen_name_map.items())
-            self._write(_out("screen_name_map"), map_rows,  SCREEN_NAME_COLUMNS)
+            self._write_final(_out("screen_name_map"), map_rows,  SCREEN_NAME_COLUMNS)
 
         # ── Metadata ─────────────────────────────────────────────────────────
         metadata = {
-            "collection":       self.get_collection(),
-            "date":             datetime.now(timezone.utc).isoformat(),
-            "run_id":           self.id,
-            "file_format":      self.file_format,
-            "users_processed":  len(valid_user_node_ids),
+            "collection":           self.get_collection(),
+            "date":                 datetime.now(timezone.utc).isoformat(),
+            "run_id":               self.id,
+            "intermediate_format":  self.file_format,
+            "final_format":         self.final_file_format,
+            "users_processed":      len(valid_user_node_ids),
         }
-        with open(os.sep.join([out_dir, "metadata.json"]), "w",
+        with open(os.path.join(out_dir, "metadata.json"), "w",
                   encoding="utf-8") as f:
             json.dump(metadata, f, indent=4)
 
@@ -905,6 +1013,7 @@ class GraphGenerationUser(MongoConnection):
             f"[GraphGenerationUser] Starting extraction. "
             f"Run ID: {self.id}  Format: {self.file_format}"
         )
+        run_start = time.time()
 
         # ── Step 1: fetch the global user.id range (lightweight query) ────────
         client = MongoClient(self._uri, **self._mongo_kwargs)
@@ -973,6 +1082,13 @@ class GraphGenerationUser(MongoConnection):
                     )
 
         # ── Step 4: merge all checkpoints into final output ───────────────────
-        self.logger.info(f"{total_users} users processed in total. Merging...")
+        extraction_elapsed = time.time() - run_start
+        extr_h, extr_rem = divmod(extraction_elapsed, 3600)
+        extr_m, extr_s = divmod(extr_rem, 60)
+        self.logger.info(
+            f"{total_users} users processed in total in "
+            f"{int(extr_h):02}:{int(extr_m):02}:{int(extr_s):02}. "
+            f"Starting merge (checkpoints: {self.file_format} → final: {self.final_file_format})..."
+        )
         self.merge_checkpoints()
         self.logger.info("Extraction complete.")
