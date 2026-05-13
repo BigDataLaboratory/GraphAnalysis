@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       prop_file_name:
-        description: 'Property file name (e.g., prop.json, prop_exp.json)'
+        description: 'Property file name (e.g., prop.yaml, prop_ipazia.yaml)'
         required: true
-        default: 'prop.json'
+        default: 'prop.ipazia.yaml'
 
 jobs:
   extract:
@@ -29,15 +29,19 @@ jobs:
 
       - name: Run Extraction Container
         run: |
-          # Select the prop file to use (dispatch input or 'prop.json' fallback for pushes)
-          PROP_FILE="${{ github.event.inputs.prop_file_name || 'prop.json' }}"
+          # Select the prop file to use (dispatch input or 'prop.yaml' fallback for pushes)
+          PROP_FILE="${{ github.event.inputs.prop_file_name || 'prop.yaml' }}"
           
-          # Mount the selected configuration file to override the default prop.json inside the container
+          # Mount the selected configuration file into the container
           podman run --rm --replace \
             --name graph_analysis \
-            -v ~/extraction/output:/app/output \
-            -v ${{ github.workspace }}/properties/$PROP_FILE:/app/properties/prop.json:ro \
-            -e MONGO_URI="${{ secrets.MONGO_URI }}" \
+            -v /ipazianas/pasquini/extraction/outputs:/app/resources \
+            -v /ipazianas/pasquini/training/logs:/app/logs \
+            -v "${{ github.workspace }}/properties/${PROP_FILE}":/app/properties/prop.yaml:ro \
+            -v /ipazianas/pasquini/training/graphs:/app/graphs \
+            -v /ipazianas/pasquini/training/models:/app/models \
+            -v /ipazianas/pasquini/training/results:/app/results \
+            -e MONGO_URI="${{ vars.MONGO_URI }}" \
             -e MONGO_USERNAME="${{ secrets.MONGO_USERNAME }}" \
             -e MONGO_PASSWORD="${{ secrets.MONGO_PASSWORD }}" \
             graph_analysis

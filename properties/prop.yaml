@@ -6,7 +6,7 @@ log:
 # Graph Generation Stage
 graph_generation:
   to_execute: true
-  delete_tmp_after_merge: false
+  delete_tmp_after_merge: true
   parameters:
     checkpoint_every: 500
     n_workers: 12

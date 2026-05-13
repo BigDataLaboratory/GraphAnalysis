@@ -44,11 +44,10 @@ podman run \
 production
 ```bash
 podman run \
-  -e MONGO_URI="mongodb://host.containers.internal:27017" \
+  -e MONGO_URI="mongodb://127.0.0.1:27020" \
   -v /ipazianas/pasquini/extraction/outputs:/app/resources \
   -v /ipazianas/pasquini/training/graphs:/app/graphs \
   -v /ipazianas/pasquini/training/logs:/app/logs \
-  -v /ipazianas/pasquini/training/mlflow:/app/mlflow \
   -v /ipazianas/pasquini/training/models:/app/models \
   -v /ipazianas/pasquini/training/results:/app/results \
   graph-analysis
