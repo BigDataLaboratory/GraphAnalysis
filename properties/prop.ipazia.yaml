@@ -13,7 +13,7 @@ graph_generation:
       conf:
         uri: "mongodb://localhost:27020/"
         db_name: "twitter"
-        collection: "QCPS_2_mini"
+        collection: "QCPS_2"
         chunk_start_date: "23/02/2022"
         chunk_end_date: "16/01/2023"
         method: "day"
