@@ -20,7 +20,7 @@ COPY algorithms/  ./algorithms/
 COPY community/   ./community/
 COPY analysis/    ./analysis/
 COPY properties/  ./properties/
-COPY Main.py fetch_texts.py retweet.py ids_user.py ./
+COPY Main.py fetch_texts.py retweet.py ids_user.py config.py ./
 
 VOLUME ["/app/resources", "/app/outputs", "/app/logs", "/app/properties"]
 ENTRYPOINT ["python", "Main.py"]
