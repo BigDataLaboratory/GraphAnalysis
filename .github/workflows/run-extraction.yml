@@ -21,7 +21,7 @@ jobs:
 
       - name: Build Podman Image
         run: |
-          podman build -t graph_extraction -f docker/Dockerfile .
+          podman build -t graph_analysis -f docker/Dockerfile .
 
       - name: Prepare Host Directories
         run: |
@@ -34,10 +34,10 @@ jobs:
           
           # Mount the selected configuration file to override the default prop.json inside the container
           podman run --rm --replace \
-            --name graph_extraction \
+            --name graph_analysis \
             -v ~/extraction/output:/app/output \
             -v ${{ github.workspace }}/properties/$PROP_FILE:/app/properties/prop.json:ro \
             -e MONGO_URI="${{ secrets.MONGO_URI }}" \
             -e MONGO_USERNAME="${{ secrets.MONGO_USERNAME }}" \
             -e MONGO_PASSWORD="${{ secrets.MONGO_PASSWORD }}" \
-            graph_extraction
+            graph_analysis
