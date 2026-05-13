@@ -6,7 +6,7 @@ graph_generation:
   delete_tmp_after_merge: true
   parameters:
     checkpoint_every: 50000
-    n_workers: 12
+    n_workers: 20
     fast_rt_threshold: 60
     input:
       type: "json"
