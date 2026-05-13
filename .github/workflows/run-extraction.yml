@@ -38,6 +38,7 @@ jobs:
           # Mount the selected configuration file into the container
           podman run --rm --replace \
             --name graph_analysis \
+            --network host \
             -v /ipazianas/pasquini/extraction/outputs:/app/resources \
             -v /ipazianas/pasquini/extraction/logs:/app/logs \
             -v "${{ github.workspace }}/properties/${PROP_FILE}":/app/properties/prop.yaml:ro \
