@@ -25,8 +25,8 @@ jobs:
 
       - name: Prepare Host Directories
         run: |
-          mkdir -p ~/extraction/outputs
-          mkdir -p ~/extraction/logs
+          mkdir -p /ipazianas/pasquini/extraction/outputs
+          mkdir -p /ipazianas/pasquini/extraction/logs
 
       - name: Run Extraction Container
         run: |
