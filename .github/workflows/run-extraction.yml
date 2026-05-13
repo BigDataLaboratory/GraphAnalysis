@@ -31,7 +31,7 @@ jobs:
       - name: Run Extraction Container
         run: |
           # Select the prop file to use (dispatch input or 'prop.yaml' fallback for pushes)
-          PROP_FILE="${{ github.event.inputs.prop_file_name || 'prop.yaml' }}"
+          PROP_FILE="${{ github.event.inputs.prop_file_name || 'prop.ipazia.yaml' }}"
           
           # Mount the selected configuration file into the container
           podman run --rm --replace \
