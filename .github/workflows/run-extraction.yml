@@ -25,7 +25,7 @@ jobs:
 
       - name: Prepare Host Directories
         run: |
-          mkdir -p ~/extraction/output
+          mkdir -p ~/extraction/outputs
 
       - name: Run Extraction Container
         run: |
@@ -36,11 +36,8 @@ jobs:
           podman run --rm --replace \
             --name graph_analysis \
             -v /ipazianas/pasquini/extraction/outputs:/app/resources \
-            -v /ipazianas/pasquini/training/logs:/app/logs \
+            -v /ipazianas/pasquini/extraction/logs:/app/logs \
             -v "${{ github.workspace }}/properties/${PROP_FILE}":/app/properties/prop.yaml:ro \
-            -v /ipazianas/pasquini/training/graphs:/app/graphs \
-            -v /ipazianas/pasquini/training/models:/app/models \
-            -v /ipazianas/pasquini/training/results:/app/results \
             -e MONGO_URI="${{ vars.MONGO_URI }}" \
             -e MONGO_USERNAME="${{ secrets.MONGO_USERNAME }}" \
             -e MONGO_PASSWORD="${{ secrets.MONGO_PASSWORD }}" \
