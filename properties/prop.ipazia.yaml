@@ -1,5 +1,5 @@
 log:
-  filepath: "/ipazianas/pasquini/logs/graph_generation.log"
+  filepath: "/app/logs/graph_generation.log"
   level: "INFO"
 graph_generation:
   to_execute: true
@@ -30,7 +30,7 @@ graph_generation:
       mention: false
       user_user: true
     output:
-      path: "/ipazianas/pasquini/graphs_analysis/outputs"
+      path: "/app/resources"
       graph_file_name:
         retweet: "retweet"
         mention: "mention"
@@ -49,26 +49,26 @@ community_detection:
     read_from_file: true
     temporal: true
     graph_file_path:
-      - "/ipazianas/pasquini/output_graph_analysis/feb-oct_week_2022/6500962c9d1611f0948408f1eaf4fe18/retweet"
+      - "/app/resources/output_graph_analysis/feb-oct_week_2022/6500962c9d1611f0948408f1eaf4fe18/retweet"
     pickle_graph_file_path: "/dev/shm/feb_oct_2022"
   leiden:
     to_execute: true
     parameters:
-      community_output_file_path: "/ipazianas/pasquini/output_graph_analysis/communities_leiden/temporal/feb_oct_weekly_2022/retweet"
+      community_output_file_path: "/app/resources/output_graph_analysis/communities_leiden/temporal/feb_oct_weekly_2022/retweet"
   combo:
     to_execute: false
     parameters:
-      community_output_file_path: "/ipazianas/pasquini/output_graph_analysis/communities_combo"
+      community_output_file_path: "/app/resources/output_graph_analysis/communities_combo"
   hierarchical:
     to_execute: false
     parameters:
-      first_level_communities_file: "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/6273205e640511f08e0b08f1eaf4fe18/nodes_with_communities.csv"
+      first_level_communities_file: "/app/resources/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/6273205e640511f08e0b08f1eaf4fe18/nodes_with_communities.csv"
       community_col_name: "0.6"
-      community_output_file_path: "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/6273205e640511f08e0b08f1eaf4fe18/hierarchical"
+      community_output_file_path: "/app/resources/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/6273205e640511f08e0b08f1eaf4fe18/hierarchical"
       top_k: 500
       collapse_nodes: true
       min_size: 30
-      pickle_output_path: "/ipazianas/pasquini/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/6273205e640511f08e0b08f1eaf4fe18/hierarchical"
+      pickle_output_path: "/app/resources/output_graph_analysis/communities_leiden/feb-aug_2022/cpm/6273205e640511f08e0b08f1eaf4fe18/hierarchical"
 get_users_text:
   to_execute: false
   parameters:
@@ -76,12 +76,12 @@ get_users_text:
       indexes: []
       community_col_name: "0.6"
       read_communities_from_file: true
-      community_file_path: "/ipazianas/pasquini/output_graph_analysis/communities/f51aba14a75b11efa55808f1eaf4fe18/communities_rp_0.6.csv"
+      community_file_path: "/app/resources/output_graph_analysis/communities/f51aba14a75b11efa55808f1eaf4fe18/communities_rp_0.6.csv"
     map_file_path:
       read_maps_from_file: true
-      user_map: "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/user_id"
-      hashtag_map: "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/hashtag"
-      retweet_user_map: "/ipazianas/pasquini/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/user_retweeted_id"
+      user_map: "/app/resources/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/user_id"
+      hashtag_map: "/app/resources/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/hashtag"
+      retweet_user_map: "/app/resources/output_graph_analysis/f6e06c4ca1a011efa50708f1eaf4fe18/user_retweeted_id"
     input:
       type: "mongo"
       conf:
@@ -95,8 +95,8 @@ get_users_text:
 topic_builder:
   to_execute: false
   parameters:
-    topics_file_path: "/ipazianas/pasquini/output_graph_analysis/topics_info"
-    docs_file_path: "/ipazianas/pasquini/output_graph_analysis/docs_info"
+    topics_file_path: "/app/resources/output_graph_analysis/topics_info"
+    docs_file_path: "/app/resources/output_graph_analysis/docs_info"
     model:
-      model_path: "/ipazianas/pasquini/output_graph_analysis/topic_model"
+      model_path: "/app/resources/output_graph_analysis/topic_model"
       serialization: "pickle"
