@@ -44,4 +44,4 @@ jobs:
             -e MONGO_URI="${{ vars.MONGO_URI }}" \
             -e MONGO_USERNAME="${{ secrets.MONGO_USERNAME }}" \
             -e MONGO_PASSWORD="${{ secrets.MONGO_PASSWORD }}" \
-            graph_analysis
+            graph-analysis --properties /app/properties/prop.yaml
