@@ -1020,10 +1020,15 @@ class GraphGenerationUser(MongoConnection):
         )
         run_start = time.time()
 
-        # ── Step 1: fetch the global user.id range (lightweight query) ────────
+        # ── Step 1: fetch the global user.id range (full collection scan) ────
         client = MongoClient(self._uri, **self._mongo_kwargs)
         col = client[self._database_name][self._collection_name]
 
+        self.logger.info(
+            f"Scanning collection '{self._collection_name}' to determine "
+            f"user.id range (this may take several minutes on large collections)..."
+        )
+        _scan_start = time.time()
         bounds = list(col.aggregate([
             {"$group": {
                 "_id": None,
@@ -1031,6 +1036,7 @@ class GraphGenerationUser(MongoConnection):
                 "max_uid": {"$max": "$user.id"},
             }}
         ]))
+        _scan_elapsed = time.time() - _scan_start
         client.close()
 
         if not bounds:
@@ -1041,7 +1047,8 @@ class GraphGenerationUser(MongoConnection):
         global_max = bounds[0]["max_uid"] + 1  # exclusive upper bound
 
         self.logger.info(
-            f"user.id range: [{global_min}, {global_max}) — "
+            f"user.id range determined in {_scan_elapsed:.1f}s: "
+            f"[{global_min}, {global_max}) — "
             f"splitting across {n_workers} worker(s)."
         )
 
@@ -1062,6 +1069,15 @@ class GraphGenerationUser(MongoConnection):
         )
 
         # ── Step 3: dispatch workers ───────────────────────────────────────────
+        self.logger.info(
+            f"Dispatching {len(ranges)} worker(s) "
+            f"(checkpoint every {checkpoint_every} users per worker)..."
+        )
+        for wid, uid_s, uid_e in ranges:
+            self.logger.info(
+                f"  Worker {wid}: user.id range [{uid_s}, {uid_e})"
+            )
+
         total_users = 0
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
             futures = {
