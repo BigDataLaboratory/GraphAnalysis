@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import os
+import threading
 import uuid
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -930,17 +931,19 @@ class GraphGenerationUser(MongoConnection):
     # ─────────────────────────────────────────────────────────────────────────
 
     def _process_uid_range(self, worker_id: int, uid_start: int, uid_end: int,
-                           checkpoint_every: int, max_users: Optional[int]) -> int:
+                           checkpoint_every: int, max_users: Optional[int],
+                           total_users_counter: Optional[list] = None,
+                           total_users_lock: Optional[threading.Lock] = None) -> int:
         """
         Worker: open an independent MongoDB connection and process all users
         with user.id in [uid_start, uid_end).  Saves checkpoints with batch IDs
         offset by worker_id * 1_000_000 to avoid collisions with other workers.
         Returns the number of users processed.
-        Main entry point. Streams tweets sorted by user.id and processes
-        one user at a time, writing checkpoints every `checkpoint_every` users.
 
         :param checkpoint_every: Users per checkpoint batch.
         :param max_users: Hard limit on users processed (None = no limit).
+        :param total_users_counter: Shared list([int]) — global users processed across all workers.
+        :param total_users_lock: Lock protecting total_users_counter.
         """
         client = MongoClient(self._uri, **self._mongo_kwargs)
         col    = client[self._database_name][self._collection_name]
@@ -975,10 +978,17 @@ class GraphGenerationUser(MongoConnection):
 
                 if user_count % checkpoint_every == 0:
                     bid = batch_offset + local_batch
+                    # Update and read the global counter
+                    global_total = user_count  # fallback if no shared counter
+                    if total_users_counter is not None and total_users_lock is not None:
+                        with total_users_lock:
+                            total_users_counter[0] += checkpoint_every
+                            global_total = total_users_counter[0]
                     self.logger.info(
                         f"[Worker {worker_id} | Batch {bid}] {user_count} users | "
                         f"{len(edges_rt)} RT | {len(edges_reply)} reply | "
-                        f"{len(mention_raw)} mention"
+                        f"{len(mention_raw)} mention "
+                        f"[total: {global_total:,} users]"
                     )
                     self.save_checkpoint(features_list, edges_rt, edges_reply,
                                          mention_raw, screen_names_list, bid)
@@ -1079,12 +1089,15 @@ class GraphGenerationUser(MongoConnection):
             )
 
         total_users = 0
+        _total_users_counter = [0]              # shared mutable counter
+        _total_users_lock    = threading.Lock()
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
             futures = {
                 executor.submit(
                     self._process_uid_range,
                     worker_id, uid_start, uid_end,
                     checkpoint_every, per_worker_max,
+                    _total_users_counter, _total_users_lock,
                 ): worker_id
                 for worker_id, uid_start, uid_end in ranges
             }
