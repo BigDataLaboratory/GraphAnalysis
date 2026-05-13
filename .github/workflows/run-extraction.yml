@@ -21,7 +21,9 @@ jobs:
 
       - name: Build Podman Image
         run: |
-          podman build -t graph_analysis -f docker/Dockerfile .
+          podman build \
+            --build-arg CACHE_BUST=$(git rev-parse HEAD) \
+            -t graph-analysis -f docker/Dockerfile .
 
       - name: Prepare Host Directories
         run: |

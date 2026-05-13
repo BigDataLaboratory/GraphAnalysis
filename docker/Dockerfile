@@ -24,4 +24,5 @@ COPY Main.py fetch_texts.py retweet.py ids_user.py config.py ./
 
 VOLUME ["/app/resources", "/app/outputs", "/app/logs", "/app/properties"]
 ENTRYPOINT ["python", "Main.py"]
-CMD ["--properties", "/app/properties/prop.json"]
+ARG CACHE_BUST
+RUN echo "Cache bust: $CACHE_BUST"
