@@ -89,6 +89,8 @@ class GraphParameters(BaseModel):
     checkpoint_every: int = 5000
     n_workers: int = 4
     fast_rt_threshold: int = 60
+    is_community: bool = False
+    community_file: str = ""
     input: SourceInput
     graph_type: GraphTypes
     output: GraphOutput

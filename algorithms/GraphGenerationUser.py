@@ -23,7 +23,6 @@ from Utils.Writer import Writer, _ext, SUPPORTED_FORMATS
 from algorithms.MongoConnection import MongoConnection
 import algorithms.mongoQueries as mongoQueries
 
-
 _HTML_TAG_RE = re.compile(r'<.*?>')
 
 
@@ -166,7 +165,7 @@ USER_FEATURES_COLUMNS = [
     'tweet_avg_interval_seconds', 'daily_score', 'daily_cv_log',
     'internal_tweet_density', 'profile_has_url', 'geo_enabled_flag',
     'sensitive_rate', 'mobile_ratio', 'web_ratio',
-    'news_manager_ratio', 'bot_api_ratio', 'source_entropy',
+    'news_manager_ratio', 'bot_api_ratio', 'source_entropy', 'community',
 ]
 USER_FEATURES_COLUMNS_FINAL = USER_FEATURES_COLUMNS + [
     'received_retweets', 'received_replies', 'received_mentions',
@@ -175,6 +174,98 @@ EDGE_RETWEET_COLUMNS  = ['src', 'dst', 'weight', 'lifespan', 'fast_rt_ratio', 'r
 EDGE_REPLY_COLUMNS    = ['src', 'dst', 'weight', 'lifespan', 'avg_reply_latency_seconds', 'reply_regularity', 'reply_burstiness', 'reply_diurnal_sync']
 EDGE_MENTION_COLUMNS  = ['src', 'dst', 'weight', 'mention_lifespan', 'mention_regularity', 'mention_burstiness', 'mention_in_reply_ratio', 'mention_solo_ratio']
 SCREEN_NAME_COLUMNS   = ['screen_name', 'user_id']
+
+
+
+from abc import ABC, abstractmethod
+
+class ExtractionStrategy(ABC):
+    @abstractmethod
+    def partition_work(self, col, n_workers, max_users, logger):
+        pass
+
+    @abstractmethod
+    def iter_users(self, col, work_item):
+        pass
+
+    @abstractmethod
+    def get_community_id(self, user_id):
+        pass
+
+class TweetsSortedByUserScanStrategy(ExtractionStrategy):
+    def partition_work(self, col, n_workers, max_users, logger):
+        logger.info("Scanning collection to determine user.id range...")
+        bounds = list(col.aggregate([
+            {"$group": {
+                "_id": None,
+                "min_uid": {"$min": "$user.id"},
+                "max_uid": {"$max": "$user.id"},
+            }}
+        ]))
+        if not bounds:
+            return []
+        
+        global_min = bounds[0]["min_uid"]
+        global_max = bounds[0]["max_uid"] + 1
+        
+        step = max(1, (global_max - global_min + n_workers - 1) // n_workers)
+        ranges = []
+        for i in range(n_workers):
+            uid_start = global_min + i * step
+            uid_end   = min(global_min + (i + 1) * step, global_max)
+            if uid_start >= global_max:
+                break
+            ranges.append((uid_start, uid_end))
+        return ranges
+
+    def iter_users(self, col, work_item):
+        uid_start, uid_end = work_item
+        _, proj = mongoQueries.extract_tweets_for_user_graph()
+        query = {"user.id": {"$gte": uid_start, "$lt": uid_end}}
+        cursor = col.find(query, proj).sort("user.id", 1)
+        for user_id, user_tweets in itertools.groupby(cursor, key=lambda t: t['user']['id']):
+            yield user_id, user_tweets
+
+    def get_community_id(self, user_id):
+        return -1
+
+class CommunityUserBatchStrategy(ExtractionStrategy):
+    def __init__(self, user_community_map, batch_size=10000):
+        self.user_community_map = user_community_map
+        self.batch_size = batch_size
+
+    def partition_work(self, col, n_workers, max_users, logger):
+        user_ids = sorted(self.user_community_map.keys())
+        if max_users is not None:
+            user_ids = user_ids[:max_users]
+
+        n_users = len(user_ids)
+        min_batches = n_workers * 2
+        batch_size = min(self.batch_size, max(1, n_users // min_batches))
+
+        logger.info(
+            f"CommunityUserBatchStrategy: {n_users:,} users -> "
+            f"batch_size={batch_size} -> ~{math.ceil(n_users / batch_size)} batches "
+            f"for {n_workers} workers"
+        )
+
+        def chunked(iterable, n):
+            it = iter(iterable)
+            while batch := list(itertools.islice(it, n)):
+                yield batch
+
+        return list(chunked(user_ids, batch_size))
+
+    def iter_users(self, col, work_item):
+        user_ids = work_item
+        _, proj = mongoQueries.extract_tweets_for_user_graph()
+        query = {"user.id": {"$in": user_ids}}
+        cursor = col.find(query, proj).sort("user.id", 1)
+        for user_id, user_tweets in itertools.groupby(cursor, key=lambda t: t['user']['id']):
+            yield user_id, user_tweets
+
+    def get_community_id(self, user_id):
+        return self.user_community_map.get(user_id, -1)
 
 
 class GraphGenerationUser(MongoConnection):
@@ -203,7 +294,7 @@ class GraphGenerationUser(MongoConnection):
                  username=None, password=None, auth_source=None, auth_mechanism=None,
                  delete_tmp_after_merge=False,
                  intermediate_file_format="feather", final_file_format="parquet",
-                 file_format=None, fast_rt_threshold=60):
+                 file_format=None, fast_rt_threshold=60, strategy=None, is_community_run=False, community_file_path=None):
         """
         :param uri: MongoDB connection URI.
         :param database_name: Name of the MongoDB database.
@@ -236,6 +327,9 @@ class GraphGenerationUser(MongoConnection):
         self.file_format = intermediate_file_format        # used by _write (checkpoints)
         self.final_file_format = final_file_format         # used by _write_final (merge output)
         self.fast_rt_threshold = fast_rt_threshold
+        self.strategy = strategy or TweetsSortedByUserScanStrategy()
+        self.is_community_run = is_community_run
+        self.community_file_path = community_file_path
 
         # Stored for worker threads — each creates its own MongoClient
         self._uri = uri
@@ -759,7 +853,7 @@ class GraphGenerationUser(MongoConnection):
                 f['daily_score'], f['daily_cv_log'], f['internal_tweet_density'],
                 f['profile_has_url'], f['geo_enabled_flag'], f['sensitive_rate'],
                 f['mobile_ratio'], f['web_ratio'], f['news_manager_ratio'],
-                f['bot_api_ratio'], f['source_entropy'],
+                f['bot_api_ratio'], f['source_entropy'], f.get('community', -1)
             ]
             for f in user_features_list
         ]
@@ -900,6 +994,7 @@ class GraphGenerationUser(MongoConnection):
             self._write_final(_out("screen_name_map"), map_rows,  SCREEN_NAME_COLUMNS)
 
         # ── Metadata ─────────────────────────────────────────────────────────
+        filename = os.path.basename(self.community_file_path)
         metadata = {
             "collection":           self.get_collection(),
             "date":                 datetime.now(timezone.utc).isoformat(),
@@ -907,6 +1002,7 @@ class GraphGenerationUser(MongoConnection):
             "intermediate_format":  self.file_format,
             "final_format":         self.final_file_format,
             "users_processed":      len(valid_user_node_ids),
+            "communities":          filename if self.is_community_run else None,
         }
         with open(os.path.join(out_dir, "metadata.json"), "w",
                   encoding="utf-8") as f:
@@ -930,27 +1026,12 @@ class GraphGenerationUser(MongoConnection):
     # PARALLEL WORKER
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _process_uid_range(self, worker_id: int, uid_start: int, uid_end: int,
+    def _process_work_item(self, worker_id: int, work_item,
                            checkpoint_every: int, max_users: Optional[int],
                            total_users_counter: Optional[list] = None,
                            total_users_lock: Optional[threading.Lock] = None) -> int:
-        """
-        Worker: open an independent MongoDB connection and process all users
-        with user.id in [uid_start, uid_end).  Saves checkpoints with batch IDs
-        offset by worker_id * 1_000_000 to avoid collisions with other workers.
-        Returns the number of users processed.
-
-        :param checkpoint_every: Users per checkpoint batch.
-        :param max_users: Hard limit on users processed (None = no limit).
-        :param total_users_counter: Shared list([int]) — global users processed across all workers.
-        :param total_users_lock: Lock protecting total_users_counter.
-        """
         client = MongoClient(self._uri, **self._mongo_kwargs)
         col    = client[self._database_name][self._collection_name]
-        _, proj = mongoQueries.extract_tweets_for_user_graph()
-
-        query  = {"user.id": {"$gte": uid_start, "$lt": uid_end}}
-        cursor = col.find(query, proj).sort("user.id", ASCENDING)
 
         batch_offset = worker_id * 1_000_000
         local_batch  = 0
@@ -959,12 +1040,11 @@ class GraphGenerationUser(MongoConnection):
         user_count = 0
 
         try:
-            for user_id, user_tweets in itertools.groupby(
-                cursor, key=lambda t: t['user']['id']
-            ):
+            for user_id, user_tweets in self.strategy.iter_users(col, work_item):
                 features, rt, rep, men = self.process_user_tweets(user_id, user_tweets)
                 if features is None:
                     continue
+                features['community'] = self.strategy.get_community_id(features['user_id'])
 
                 sn = features.get('screen_name', '')
                 if sn:
@@ -1014,79 +1094,31 @@ class GraphGenerationUser(MongoConnection):
 
     def run(self, checkpoint_every: int = 500, max_users: Optional[int] = None,
             n_workers: int = 4):
-        """
-        Main entry point. Partitions the user.id range into `n_workers` slices
-        and processes each slice in parallel using ThreadPoolExecutor.
-        Each worker opens its own MongoDB connection to avoid contention.
-
-        :param checkpoint_every: Users per checkpoint batch (per worker).
-        :param max_users: Hard limit on total users processed (None = no limit).
-                          Divided evenly across workers.
-        :param n_workers: Number of parallel threads (= MongoDB connections).
-        """
         self.logger.info(
             f"[GraphGenerationUser] Starting extraction. "
             f"Run ID: {self.id}  Format: {self.file_format}"
         )
         run_start = time.time()
 
-        # ── Step 1: fetch the global user.id range (full collection scan) ────
         client = MongoClient(self._uri, **self._mongo_kwargs)
         col = client[self._database_name][self._collection_name]
-
-        self.logger.info(
-            f"Scanning collection '{self._collection_name}' to determine "
-            f"user.id range (this may take several minutes on large collections)..."
-        )
-        _scan_start = time.time()
-        bounds = list(col.aggregate([
-            {"$group": {
-                "_id": None,
-                "min_uid": {"$min": "$user.id"},
-                "max_uid": {"$max": "$user.id"},
-            }}
-        ]))
-        _scan_elapsed = time.time() - _scan_start
+        
+        work_items = self.strategy.partition_work(col, n_workers, max_users, self.logger)
         client.close()
 
-        if not bounds:
-            self.logger.warning("Collection is empty — nothing to process.")
+        if not work_items:
+            self.logger.warning("No work to process.")
             return
 
-        global_min = bounds[0]["min_uid"]
-        global_max = bounds[0]["max_uid"] + 1  # exclusive upper bound
-
-        self.logger.info(
-            f"user.id range determined in {_scan_elapsed:.1f}s: "
-            f"[{global_min}, {global_max}) — "
-            f"splitting across {n_workers} worker(s)."
-        )
-
-        # ── Step 2: split the id range evenly across workers ──────────────────
-        step = max(1, (global_max - global_min + n_workers - 1) // n_workers)
-        ranges = []
-        for i in range(n_workers):
-            uid_start = global_min + i * step
-            uid_end   = min(global_min + (i + 1) * step, global_max)
-            if uid_start >= global_max:
-                break
-            ranges.append((i, uid_start, uid_end))
-
-        # Per-worker max_users cap (None = unlimited)
         per_worker_max = (
-            (max_users + len(ranges) - 1) // len(ranges)
-            if max_users is not None else None
+            (max_users + len(work_items) - 1) // len(work_items)
+            if max_users is not None and len(work_items) > 0 else None
         )
 
-        # ── Step 3: dispatch workers ───────────────────────────────────────────
         self.logger.info(
-            f"Dispatching {len(ranges)} worker(s) "
-            f"(checkpoint every {checkpoint_every} users per worker)..."
+            f"Dispatching {len(work_items)} task(s) to {n_workers} thread(s) "
+            f"(checkpoint every {checkpoint_every} users per task)..."
         )
-        for wid, uid_s, uid_e in ranges:
-            self.logger.info(
-                f"  Worker {wid}: user.id range [{uid_s}, {uid_e})"
-            )
 
         total_users = 0
         _total_users_counter = [0]              # shared mutable counter
@@ -1094,12 +1126,12 @@ class GraphGenerationUser(MongoConnection):
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
             futures = {
                 executor.submit(
-                    self._process_uid_range,
-                    worker_id, uid_start, uid_end,
+                    self._process_work_item,
+                    task_id, work_item,
                     checkpoint_every, per_worker_max,
                     _total_users_counter, _total_users_lock,
-                ): worker_id
-                for worker_id, uid_start, uid_end in ranges
+                ): task_id
+                for task_id, work_item in enumerate(work_items)
             }
             for future in as_completed(futures):
                 worker_id = futures[future]

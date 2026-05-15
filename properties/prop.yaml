@@ -9,8 +9,10 @@ graph_generation:
   delete_tmp_after_merge: true
   parameters:
     checkpoint_every: 500
-    n_workers: 12
+    n_workers: 6
     fast_rt_threshold: 60
+    is_community: true
+    community_file: "./resources/communities_rp_0.4.csv"
     input:
       type: "json"
       conf:

@@ -5,12 +5,12 @@ import pandas as pd
 from Utils.Writer import Writer, SUPPORTED_FORMATS
 from algorithms.CommunityText import CommunityText
 from algorithms.GraphGeneration import GraphGeneration
-from algorithms.GraphGenerationUser import GraphGenerationUser
+from algorithms.GraphGenerationUser import GraphGenerationUser, TweetsSortedByUserScanStrategy, CommunityUserBatchStrategy
 from community.Combo import Combo
 from community.Leiden import Leiden
 from algorithms import mongoQueries
 from config import AppConfig
-
+import pandas as pd
 
 class GraphAnalysis:
     logger = logging.getLogger("GraphAnalysis")
@@ -70,6 +70,15 @@ class GraphAnalysis:
         final_fmt = out.final_file_format
 
         if gt.user_user:
+            if getattr(p, "is_community", False) and getattr(p, "community_file", ""):
+                df = pd.read_csv(p.community_file)
+                user_community_map = dict(zip(df["user_id"].astype(int), df["community"].astype(int)))
+                strategy = CommunityUserBatchStrategy(user_community_map)
+                is_comm = True
+            else:
+                strategy = TweetsSortedByUserScanStrategy()
+                is_comm = False
+
             ggu = GraphGenerationUser(
                 uri=src.uri,
                 username=src.username,
@@ -83,6 +92,9 @@ class GraphAnalysis:
                 intermediate_file_format=intermediate_fmt,
                 final_file_format=final_fmt,
                 fast_rt_threshold=p.fast_rt_threshold,
+                strategy=strategy,
+                is_community_run=is_comm,
+                community_file_path=getattr(p, "community_file", None) if is_comm else None
             )
             ggu.run(checkpoint_every=p.checkpoint_every, n_workers=p.n_workers)
 

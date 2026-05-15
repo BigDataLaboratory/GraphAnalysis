@@ -13,7 +13,7 @@ on:
 
 jobs:
   extract:
-    timeout-minutes: 10080  # 7 days max time to run
+    timeout-minutes: 50000  # 34 days max time to run
     runs-on: self-hosted # Executes directly on your target server 
 
     steps:

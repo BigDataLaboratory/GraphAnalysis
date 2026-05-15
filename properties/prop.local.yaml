@@ -8,6 +8,8 @@ graph_generation:
     checkpoint_every: 5000
     n_workers: 4
     fast_rt_threshold: 60
+    is_community: false
+    community_file: "./resources/communities.csv"
     input:
       type: "mongo"
       conf:
