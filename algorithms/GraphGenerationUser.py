@@ -308,7 +308,7 @@ class CommunityAwareShardStrategy(ExtractionStrategy):
         for cid, user_ids in work_item:
             for i in range(0, len(user_ids), self.batch_size):
                 batch = user_ids[i : i + self.batch_size]
-                print("[CommunityAwareShardStrategy] Query:{'user.id': {'$in': "+batch+"}}")
+                print(f"[CommunityAwareShardStrategy] Query:{{'user.id': {{'$in': {batch}}}}}\n")
                 cursor = col.find(
                     {"user.id": {"$in": batch}}, proj
                 ).sort("user.id", 1)
