@@ -92,6 +92,7 @@ class GraphParameters(BaseModel):
     is_community: bool
     community_file: str
     community_strategy: str
+    community_batch_size: int
     input: SourceInput
     graph_type: GraphTypes
     output: GraphOutput
