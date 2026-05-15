@@ -10,6 +10,7 @@ from algorithms.GraphGenerationUser import (
     TweetsSortedByUserScanStrategy,
     CommunityUserBatchStrategy,
     CommunityAwareShardStrategy,
+    CommunitySortedLinearScanStrategy
 )
 from community.Combo import Combo
 from community.Leiden import Leiden
@@ -87,8 +88,10 @@ class GraphAnalysis:
 
                 if strategy_name == "batch":
                     strategy = CommunityUserBatchStrategy(user_community_map)
-                else:
+                if strategy_name == "shard":
                     strategy = CommunityAwareShardStrategy(user_community_map, batch_size=batch_size)
+                if strategy_name == "linear":
+                    strategy = CommunitySortedLinearScanStrategy(user_community_map, batch_size=batch_size)
                 
                 is_comm = True
             else:

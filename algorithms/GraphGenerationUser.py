@@ -181,11 +181,11 @@ from abc import ABC, abstractmethod
 
 class ExtractionStrategy(ABC):
     @abstractmethod
-    def partition_work(self, col, n_workers, max_users, logger):
+    def partition_work(self, collection, n_workers, max_users, logger):
         pass
 
     @abstractmethod
-    def iter_users(self, col, work_item):
+    def iter_users(self, collection, work_item):
         pass
 
     @abstractmethod
@@ -193,9 +193,9 @@ class ExtractionStrategy(ABC):
         pass
 
 class TweetsSortedByUserScanStrategy(ExtractionStrategy):
-    def partition_work(self, col, n_workers, max_users, logger):
+    def partition_work(self, collection, n_workers, max_users, logger):
         logger.info("Scanning collection to determine user.id range...")
-        bounds = list(col.aggregate([
+        bounds = list(collection.aggregate([
             {"$group": {
                 "_id": None,
                 "min_uid": {"$min": "$user.id"},
@@ -218,11 +218,11 @@ class TweetsSortedByUserScanStrategy(ExtractionStrategy):
             ranges.append((uid_start, uid_end))
         return ranges
 
-    def iter_users(self, col, work_item):
+    def iter_users(self, collection, work_item):
         uid_start, uid_end = work_item
         _, proj = mongoQueries.extract_tweets_for_user_graph()
         query = {"user.id": {"$gte": uid_start, "$lt": uid_end}}
-        cursor = col.find(query, proj).sort("user.id", 1)
+        cursor = collection.find(query, proj).sort("user.id", 1)
         for user_id, user_tweets in itertools.groupby(cursor, key=lambda t: t['user']['id']):
             yield user_id, user_tweets
 
@@ -234,7 +234,7 @@ class CommunityUserBatchStrategy(ExtractionStrategy):
         self.user_community_map = user_community_map
         self.batch_size = batch_size
 
-    def partition_work(self, col, n_workers, max_users, logger):
+    def partition_work(self, collection, n_workers, max_users, logger):
         user_ids = sorted(self.user_community_map.keys())
         if max_users is not None:
             user_ids = user_ids[:max_users]
@@ -256,11 +256,11 @@ class CommunityUserBatchStrategy(ExtractionStrategy):
 
         return list(chunked(user_ids, batch_size))
 
-    def iter_users(self, col, work_item):
+    def iter_users(self, collection, work_item):
         user_ids = work_item
         _, proj = mongoQueries.extract_tweets_for_user_graph()
         query = {"user.id": {"$in": user_ids}}
-        cursor = col.find(query, proj).sort("user.id", 1)
+        cursor = collection.find(query, proj).sort("user.id", 1)
         for user_id, user_tweets in itertools.groupby(cursor, key=lambda t: t['user']['id']):
             yield user_id, user_tweets
 
@@ -269,9 +269,9 @@ class CommunityUserBatchStrategy(ExtractionStrategy):
 
 class CommunityAwareShardStrategy(ExtractionStrategy):
     """
-    Partition le travail PAR COMMUNAUTÉ au lieu de par plage d'IDs.
-    Chaque worker prend N communautés complètes → pas de coordination,
-    et les checkpoints sont naturellement groupés par communauté.
+    Partitions work BY COMMUNITY instead of by ID range.
+    Each worker takes N complete communities → no coordination,
+    and checkpoints are naturally grouped by community.
     """
     def __init__(self, user_community_map: dict, batch_size: int = 500):
         self.user_community_map = user_community_map
@@ -281,14 +281,14 @@ class CommunityAwareShardStrategy(ExtractionStrategy):
         for uid, cid in user_community_map.items():
             self.community_users[cid].append(uid)
 
-    def partition_work(self, col, n_workers, max_users, logger):
-        # Trie les communautés par taille desc → meilleur load balancing
+    def partition_work(self, collection, n_workers, max_users, logger):
+        # Sort communities by size (desc) for better load balancing
         communities = sorted(
             self.community_users.items(),
             key=lambda x: len(x[1]),
             reverse=True
         )
-        # Round-robin sur les workers pour équilibrer la charge
+        # Round-robin on workers to balance the load
         worker_loads = [[] for _ in range(n_workers)]
         worker_sizes = [0] * n_workers
         for cid, uids in communities:
@@ -301,15 +301,15 @@ class CommunityAwareShardStrategy(ExtractionStrategy):
             f"{sum(worker_sizes):,} users | "
             f"load per worker: {worker_sizes}"
         )
-        return worker_loads  # work_item = liste de (cid, [uids])
+        return worker_loads  # work_item = list of (cid, [uids])
 
-    def iter_users(self, col, work_item):
+    def iter_users(self, collection, work_item):
         _, proj = mongoQueries.extract_tweets_for_user_graph()
         for cid, user_ids in work_item:
             for i in range(0, len(user_ids), self.batch_size):
                 batch = user_ids[i : i + self.batch_size]
                 print(f"[CommunityAwareShardStrategy] Query:{{'user.id': {{'$in': {batch}}}}}\n")
-                cursor = col.find(
+                cursor = collection.find(
                     {"user.id": {"$in": batch}}, proj
                 ).sort("user.id", 1)
                 for user_id, user_tweets in itertools.groupby(
@@ -319,6 +319,65 @@ class CommunityAwareShardStrategy(ExtractionStrategy):
 
     def get_community_id(self, user_id):
         return self.user_community_map.get(user_id, -1)
+
+class CommunitySortedLinearScanStrategy(ExtractionStrategy):
+    """
+    Reads the collection LINEARLY via the ID ranges (Range Scan).
+    Filters in Python to keep ONLY users present in the map.
+    This is the fastest strategy for very large volumes (Sequential I/O).
+    """
+    def __init__(self, user_community_map, batch_size=5000):
+        self.user_community_map = user_community_map
+        self.batch_size = batch_size
+        # On pré-calcule un set pour une recherche O(1)
+        self.target_users_set = set(user_community_map.keys())
+
+    def partition_work(self, collection, n_workers, max_users, logger):
+        """
+        Cuts the collection into equal ID ranges (Min/Max).
+        each worker scans its segment linearly.
+        """
+        logger.info("Calculating UID ranges for linear scan...")
+        bounds = list(collection.aggregate([
+            {"$group": {
+                "_id": None,
+                "min_uid": {"$min": "$user.id"},
+                "max_uid": {"$max": "$user.id"},
+            }}
+        ]))
+        if not bounds: return []
+        
+        g_min, g_max = bounds[0]["min_uid"], bounds[0]["max_uid"] + 1
+        step = (g_max - g_min + n_workers - 1) // n_workers
+        
+        ranges = []
+        for i in range(n_workers):
+            s = g_min + i * step
+            e = min(s + step, g_max)
+            ranges.append((s, e))
+        return ranges
+
+    def iter_users(self, collection, work_item):
+        uid_start, uid_end = work_item
+        _, proj = mongoQueries.extract_tweets_for_user_graph()
+        
+        # Filtre de plage pour le worker
+        query = {"user.id": {"$gte": uid_start, "$lt": uid_end}}
+        
+        # Le curseur ne charge pas tout en RAM, il 'stream' les données
+        cursor = collection.find(query, proj).sort("user.id", 1).batch_size(self.batch_size)
+        
+        # Groupby par utilisateur
+        for user_id, user_tweets in itertools.groupby(cursor, key=lambda t: t['user']['id']):
+            # LA MAGIE : On ignore instantanément l'utilisateur s'il n'est pas dans Leiden
+            if user_id not in self.target_users_set:
+                continue
+            
+            yield user_id, user_tweets
+
+    def get_community_id(self, user_id):
+        return self.user_community_map.get(user_id, -1)
+
 
 class GraphGenerationUser(MongoConnection):
     """
@@ -1082,8 +1141,8 @@ class GraphGenerationUser(MongoConnection):
                            checkpoint_every: int, max_users: Optional[int],
                            total_users_counter: Optional[list] = None,
                            total_users_lock: Optional[threading.Lock] = None) -> int:
-        client = MongoClient(self._uri, **self._mongo_kwargs)
-        col    = client[self._database_name][self._collection_name]
+        client      = MongoClient(self._uri, **self._mongo_kwargs)
+        collection  = client[self._database_name][self._collection_name]
 
         batch_offset = worker_id * 1_000_000
         local_batch  = 0
@@ -1092,7 +1151,7 @@ class GraphGenerationUser(MongoConnection):
         user_count = 0
 
         try:
-            for user_id, user_tweets in self.strategy.iter_users(col, work_item):
+            for user_id, user_tweets in self.strategy.iter_users(collection, work_item):
                 features, rt, rep, men = self.process_user_tweets(user_id, user_tweets)
                 if features is None:
                     continue
@@ -1153,9 +1212,9 @@ class GraphGenerationUser(MongoConnection):
         run_start = time.time()
 
         client = MongoClient(self._uri, **self._mongo_kwargs)
-        col = client[self._database_name][self._collection_name]
+        collection = client[self._database_name][self._collection_name]
         
-        work_items = self.strategy.partition_work(col, n_workers, max_users, self.logger)
+        work_items = self.strategy.partition_work(collection, n_workers, max_users, self.logger)
         client.close()
 
         if not work_items:
