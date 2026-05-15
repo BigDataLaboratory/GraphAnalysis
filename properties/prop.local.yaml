@@ -5,7 +5,7 @@ graph_generation:
   to_execute: true
   delete_tmp_after_merge: false
   parameters:
-    checkpoint_every: 5000
+    checkpoint_every: 500
     n_workers: 4
     fast_rt_threshold: 60
     is_community: false
