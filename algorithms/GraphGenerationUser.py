@@ -267,6 +267,57 @@ class CommunityUserBatchStrategy(ExtractionStrategy):
     def get_community_id(self, user_id):
         return self.user_community_map.get(user_id, -1)
 
+class CommunityAwareShardStrategy(ExtractionStrategy):
+    """
+    Partition le travail PAR COMMUNAUTÉ au lieu de par plage d'IDs.
+    Chaque worker prend N communautés complètes → pas de coordination,
+    et les checkpoints sont naturellement groupés par communauté.
+    """
+    def __init__(self, user_community_map: dict, batch_size: int = 500):
+        self.user_community_map = user_community_map
+        self.batch_size = batch_size
+        # Inverse map : community_id -> [user_ids]
+        self.community_users: dict = defaultdict(list)
+        for uid, cid in user_community_map.items():
+            self.community_users[cid].append(uid)
+
+    def partition_work(self, col, n_workers, max_users, logger):
+        # Trie les communautés par taille desc → meilleur load balancing
+        communities = sorted(
+            self.community_users.items(),
+            key=lambda x: len(x[1]),
+            reverse=True
+        )
+        # Round-robin sur les workers pour équilibrer la charge
+        worker_loads = [[] for _ in range(n_workers)]
+        worker_sizes = [0] * n_workers
+        for cid, uids in communities:
+            lightest = min(range(n_workers), key=lambda i: worker_sizes[i])
+            worker_loads[lightest].append((cid, sorted(uids)))
+            worker_sizes[lightest] += len(uids)
+
+        logger.info(
+            f"CommunityAwareShard: {len(communities)} communities | "
+            f"{sum(worker_sizes):,} users | "
+            f"load per worker: {worker_sizes}"
+        )
+        return worker_loads  # work_item = liste de (cid, [uids])
+
+    def iter_users(self, col, work_item):
+        _, proj = mongoQueries.extract_tweets_for_user_graph()
+        for cid, user_ids in work_item:
+            for i in range(0, len(user_ids), self.batch_size):
+                batch = user_ids[i : i + self.batch_size]
+                cursor = col.find(
+                    {"user.id": {"$in": batch}}, proj
+                ).sort("user.id", 1)
+                for user_id, user_tweets in itertools.groupby(
+                    cursor, key=lambda t: t['user']['id']
+                ):
+                    yield user_id, user_tweets
+
+    def get_community_id(self, user_id):
+        return self.user_community_map.get(user_id, -1)
 
 class GraphGenerationUser(MongoConnection):
     """
@@ -994,7 +1045,7 @@ class GraphGenerationUser(MongoConnection):
             self._write_final(_out("screen_name_map"), map_rows,  SCREEN_NAME_COLUMNS)
 
         # ── Metadata ─────────────────────────────────────────────────────────
-        filename = os.path.basename(self.community_file_path)
+        filename = os.path.basename(self.community_file_path) if self.is_community_run else None
         metadata = {
             "collection":           self.get_collection(),
             "date":                 datetime.now(timezone.utc).isoformat(),
@@ -1002,7 +1053,7 @@ class GraphGenerationUser(MongoConnection):
             "intermediate_format":  self.file_format,
             "final_format":         self.final_file_format,
             "users_processed":      len(valid_user_node_ids),
-            "communities":          filename if self.is_community_run else None,
+            "communities":          filename,
         }
         with open(os.path.join(out_dir, "metadata.json"), "w",
                   encoding="utf-8") as f:

@@ -5,7 +5,12 @@ import pandas as pd
 from Utils.Writer import Writer, SUPPORTED_FORMATS
 from algorithms.CommunityText import CommunityText
 from algorithms.GraphGeneration import GraphGeneration
-from algorithms.GraphGenerationUser import GraphGenerationUser, TweetsSortedByUserScanStrategy, CommunityUserBatchStrategy
+from algorithms.GraphGenerationUser import (
+    GraphGenerationUser,
+    TweetsSortedByUserScanStrategy,
+    CommunityUserBatchStrategy,
+    CommunityAwareShardStrategy,
+)
 from community.Combo import Combo
 from community.Leiden import Leiden
 from algorithms import mongoQueries
@@ -72,8 +77,34 @@ class GraphAnalysis:
         if gt.user_user:
             if getattr(p, "is_community", False) and getattr(p, "community_file", ""):
                 df = pd.read_csv(p.community_file)
-                user_community_map = dict(zip(df["user_id"].astype(int), df["community"].astype(int)))
-                strategy = CommunityUserBatchStrategy(user_community_map)
+                user_community_map = dict(
+                    zip(df["user_id"].astype(int), df["community"].astype(int))
+                )
+
+                # ── automatical selection of strategy ──────────────────────────
+                strategy_name = getattr(p, "community_strategy", "auto")
+
+                if strategy_name == "batch":
+                    strategy = CommunityUserBatchStrategy(user_community_map)
+                elif strategy_name == "shard":
+                    strategy = CommunityAwareShardStrategy(user_community_map, batch_size=500)
+                else:  # "auto" : choice of strategy based on number of users
+                    total_users = 16_000_000   # or col.estimated_document_count()
+                    ratio = len(user_community_map) / total_users
+                    if ratio < 0.05:
+                        strategy = CommunityAwareShardStrategy(user_community_map, batch_size=500)
+                        self.logger.info(
+                            f"Auto-strategy: CommunityAwareShardStrategy "
+                            f"(ratio={ratio:.4f}, {len(user_community_map):,} users)"
+                        )
+                    else:
+                        strategy = CommunityUserBatchStrategy(user_community_map)
+                        self.logger.info(
+                            f"Auto-strategy: CommunityUserBatchStrategy "
+                            f"(ratio={ratio:.4f}, {len(user_community_map):,} users)"
+                        )
+                # ────────────────────────────────────────────────────────────────
+
                 is_comm = True
             else:
                 strategy = TweetsSortedByUserScanStrategy()

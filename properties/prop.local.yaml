@@ -10,6 +10,7 @@ graph_generation:
     fast_rt_threshold: 60
     is_community: false
     community_file: "./resources/communities.csv"
+    community_strategy: "auto"   # "auto" | "batch" | "shard"
     input:
       type: "mongo"
       conf:

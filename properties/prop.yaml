@@ -11,8 +11,9 @@ graph_generation:
     checkpoint_every: 500
     n_workers: 6
     fast_rt_threshold: 60
-    is_community: true
+    is_community: false
     community_file: "./resources/communities_rp_0.4.csv"
+    community_strategy: "auto"   # "auto" | "batch" | "shard"
     input:
       type: "json"
       conf:

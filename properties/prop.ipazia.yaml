@@ -5,11 +5,12 @@ graph_generation:
   to_execute: true
   delete_tmp_after_merge: true
   parameters:
-    checkpoint_every: 500
+    checkpoint_every: 10
     n_workers: 32
     fast_rt_threshold: 60
     is_community: true
     community_file: "/app/resources/communities_rp_0.4.csv"
+    community_strategy: "auto"   # "auto" | "batch" | "shard"
     input:
       type: "json"
       conf:
