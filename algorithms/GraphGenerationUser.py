@@ -20,8 +20,15 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from Utils.Utils import Utils
 from Utils.Writer import Writer, _ext, SUPPORTED_FORMATS
 from algorithms.MongoConnection import MongoConnection
+from algorithms.UserFetchStrategies import (
+    TweetsSortedByUserScanStrategy,
+    CommunityUserBatchStrategy,
+    CommunityAwareShardStrategy,
+    CommunitySortedLinearScanStrategy
+)
 
 _HTML_TAG_RE = re.compile(r'<.*?>')
+
 
 
 def tweet_regularity_score_from_timestamps(timestamps):

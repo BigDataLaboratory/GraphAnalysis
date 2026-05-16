@@ -5,8 +5,8 @@ import pandas as pd
 from Utils.Writer import Writer, SUPPORTED_FORMATS
 from algorithms.CommunityText import CommunityText
 from algorithms.GraphGeneration import GraphGeneration
+from algorithms.GraphGenerationUser import GraphGenerationUser
 from algorithms.UserFetchStrategies import (
-    GraphGenerationUser,
     TweetsSortedByUserScanStrategy,
     CommunityUserBatchStrategy,
     CommunityAwareShardStrategy,
