@@ -35,7 +35,7 @@ graph_generation:
       user_user: true
     load_snapshot:
       status: true
-      tmp_path: "./resources/tmp/8cd290e451f511f182c408f1eaf4fe18  /"
+      tmp_path: "/app/resources/tmp/8cd290e451f511f182c408f1eaf4fe18/"
     output:
       path: "/app/resources"
       graph_file_name:
