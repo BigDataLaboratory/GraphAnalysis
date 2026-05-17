@@ -37,7 +37,7 @@ jobs:
           PROP_FILE="${{ github.event.inputs.prop_file_name || 'prop.ipazia.yaml' }}"
           
           # Mount the selected configuration file into the container
-          podman run --rm --replace \
+          podman run --replace \
             --name graph_analysis \
             --network host \
             -v /ipazianas/pasquini/extraction/outputs:/app/resources \

@@ -88,11 +88,11 @@ class GraphAnalysis:
 
                 if strategy_name == "batch":
                     strategy = CommunityUserBatchStrategy(user_community_map)
-                if strategy_name == "shard":
-                    strategy = CommunityAwareShardStrategy(user_community_map, batch_size=batch_size)
-                if strategy_name == "linear":
+                elif strategy_name == "linear":
                     strategy = CommunitySortedLinearScanStrategy(user_community_map, batch_size=batch_size)
-                
+                else:
+                    strategy = CommunityAwareShardStrategy(user_community_map, batch_size=batch_size)
+                    
                 is_comm = True
             else:
                 strategy = TweetsSortedByUserScanStrategy()
@@ -113,7 +113,9 @@ class GraphAnalysis:
                 fast_rt_threshold=p.fast_rt_threshold,
                 strategy=strategy,
                 is_community_run=is_comm,
-                community_file_path=getattr(p, "community_file", None) if is_comm else None
+                community_file_path=getattr(p, "community_file", None) if is_comm else None,
+                load_snapshot_status=p.load_snapshot.status if p.load_snapshot else False,
+                load_snapshot_tmp_path=p.load_snapshot.tmp_path if p.load_snapshot else ""
             )
             ggu.run(checkpoint_every=p.checkpoint_every, n_workers=p.n_workers)
 

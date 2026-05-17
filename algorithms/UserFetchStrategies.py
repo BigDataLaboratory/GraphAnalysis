@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import collections
 import itertools
 import math
 import os
@@ -21,6 +22,13 @@ class ExtractionStrategy(ABC):
     def get_community_id(self, user_id):
         pass
 
+    def exclude_users(self, processed_users: set):
+        """
+        Optional method to remove already processed users from the work partition plan 
+        so they are skipped during iterative extraction.
+        """
+        pass
+
 class TweetsSortedByUserScanStrategy(ExtractionStrategy):
     """
     One global iteration over all tweets, sorted by user.id.
@@ -33,6 +41,13 @@ class TweetsSortedByUserScanStrategy(ExtractionStrategy):
 
     Complexity: O(t): iteration over all tweets
     """
+    def __init__(self):
+        self.processed_users = set()
+
+    def exclude_users(self, processed_users: set):
+        self.processed_users = processed_users
+        return 0 # Cannot pre-compute skipped elements
+
     def partition_work(self, collection, n_workers, max_users, logger):
         logger.info("Scanning collection to determine user.id range...")
         bounds = list(collection.aggregate([
@@ -64,6 +79,10 @@ class TweetsSortedByUserScanStrategy(ExtractionStrategy):
         query = {"user.id": {"$gte": uid_start, "$lt": uid_end}}
         cursor = collection.find(query, proj).sort("user.id", 1)
         for user_id, user_tweets in itertools.groupby(cursor, key=lambda t: t['user']['id']):
+            if user_id in self.processed_users:
+                # Convert to empty deque to avoid keeping the generator open for this user
+                collections.deque(user_tweets, maxlen=0)
+                continue
             yield user_id, user_tweets
 
     def get_community_id(self, user_id):
@@ -106,6 +125,12 @@ class CommunityUserBatchStrategy(ExtractionStrategy):
     def __init__(self, user_community_map, batch_size=10000):
         self.user_community_map = user_community_map
         self.batch_size = batch_size
+
+    def exclude_users(self, processed_users: set):
+        count_before = len(self.user_community_map)
+        for u in processed_users:
+            self.user_community_map.pop(u, None)
+        return count_before - len(self.user_community_map)
 
     def partition_work(self, collection, n_workers, max_users, logger):
         user_ids = sorted(self.user_community_map.keys())
@@ -190,6 +215,19 @@ class CommunityAwareShardStrategy(ExtractionStrategy):
         for uid, cid in user_community_map.items():
             self.community_users[cid].append(uid)
 
+    def exclude_users(self, processed_users: set):
+        count_before = sum(len(uids) for uids in self.community_users.values())
+        for cid, uids in list(self.community_users.items()):
+            new_uids = [u for u in uids if u not in processed_users]
+            if not new_uids:
+                del self.community_users[cid]
+            else:
+                self.community_users[cid] = new_uids
+        for u in processed_users:
+            self.user_community_map.pop(u, None)
+        count_after = sum(len(uids) for uids in self.community_users.values())
+        return count_before - count_after
+
     def partition_work(self, collection, n_workers, max_users, logger):
         # Sort communities by size (desc) for better load balancing
         communities = sorted(
@@ -214,18 +252,28 @@ class CommunityAwareShardStrategy(ExtractionStrategy):
 
     def iter_users(self, collection, work_item):
         _, proj = mongoQueries.extract_tweets_for_user_graph()
+        
         for cid, user_ids in work_item:
             for i in range(0, len(user_ids), self.batch_size):
                 batch = user_ids[i : i + self.batch_size]
                 
-                cursor = collection.find(
-                    {"user.id": {"$in": batch}}, proj
-                ).sort("user.id", 1)
-                for user_id, user_tweets in itertools.groupby(
-                    cursor, key=lambda t: t['user']['id']
-                ):
-                    yield user_id, user_tweets
-
+                # Session explicite = pas de idle timeout
+                with collection.database.client.start_session() as session:
+                    cursor = collection.find(
+                        {"user.id": {"$in": batch}},
+                        proj,
+                        no_cursor_timeout=True,
+                        session=session
+                    ).sort("user.id", 1)
+                    
+                    try:
+                        for user_id, user_tweets in itertools.groupby(
+                            cursor, key=lambda t: t['user']['id']
+                        ):
+                            yield user_id, user_tweets
+                    finally:
+                        cursor.close()
+                        
     def get_community_id(self, user_id):
         return self.user_community_map.get(user_id, -1)
 
@@ -279,6 +327,13 @@ class CommunitySortedLinearScanStrategy(ExtractionStrategy):
         self.batch_size = batch_size
         # On pré-calcule un set pour une recherche O(1)
         self.target_users_set = set(user_community_map.keys())
+
+    def exclude_users(self, processed_users: set):
+        count_before = len(self.target_users_set)
+        self.target_users_set -= processed_users
+        for u in processed_users:
+            self.user_community_map.pop(u, None)
+        return count_before - len(self.target_users_set)
 
     def partition_work(self, collection, n_workers, max_users, logger):
         """

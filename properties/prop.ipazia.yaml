@@ -33,6 +33,9 @@ graph_generation:
       response: false
       mention: false
       user_user: true
+    load_snapshot:
+      status: true
+      tmp_path: "./resources/tmp/e6fe8cd2513011f188fa08f1eaf4fe18/"
     output:
       path: "/app/resources"
       graph_file_name:

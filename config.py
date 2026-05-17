@@ -85,6 +85,10 @@ class GraphOutput(BaseModel):
             values.setdefault("final_file_format", legacy)
         return values
 
+class LoadSnapshot(BaseModel):
+    status: bool = False
+    tmp_path: str = ""
+
 class GraphParameters(BaseModel):
     checkpoint_every: int = 5000
     n_workers: int = 4
@@ -93,6 +97,7 @@ class GraphParameters(BaseModel):
     community_file: str
     community_strategy: str
     community_batch_size: int
+    load_snapshot: Optional[LoadSnapshot] = LoadSnapshot()
     input: SourceInput
     graph_type: GraphTypes
     output: GraphOutput

@@ -33,6 +33,9 @@ graph_generation:
       mention: false
       hashtag_cooccurrences: true
       user_user: false
+    load_snapshot:
+      status: false
+      tmp_path: "./resources/tmp/5f147129508b11f1a0209c29764a0d1b"
     output:
       path: "./output/graphs"
       graph_file_name:

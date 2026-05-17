@@ -20,12 +20,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from Utils.Utils import Utils
 from Utils.Writer import Writer, _ext, SUPPORTED_FORMATS
 from algorithms.MongoConnection import MongoConnection
-from algorithms.UserFetchStrategies import (
-    TweetsSortedByUserScanStrategy,
-    CommunityUserBatchStrategy,
-    CommunityAwareShardStrategy,
-    CommunitySortedLinearScanStrategy
-)
 
 _HTML_TAG_RE = re.compile(r'<.*?>')
 
@@ -207,7 +201,8 @@ class GraphGenerationUser(MongoConnection):
                  username=None, password=None, auth_source=None, auth_mechanism=None,
                  delete_tmp_after_merge=False,
                  intermediate_file_format="feather", final_file_format="parquet",
-                 file_format=None, fast_rt_threshold=60, strategy=None, is_community_run=False, community_file_path=None):
+                 file_format=None, fast_rt_threshold=60, strategy=None, is_community_run=False, community_file_path=None,
+                 load_snapshot_status=False, load_snapshot_tmp_path=""):
         """
         :param uri: MongoDB connection URI.
         :param database_name: Name of the MongoDB database.
@@ -240,9 +235,11 @@ class GraphGenerationUser(MongoConnection):
         self.file_format = intermediate_file_format        # used by _write (checkpoints)
         self.final_file_format = final_file_format         # used by _write_final (merge output)
         self.fast_rt_threshold = fast_rt_threshold
-        self.strategy = strategy or TweetsSortedByUserScanStrategy()
+        self.strategy = strategy
         self.is_community_run = is_community_run
         self.community_file_path = community_file_path
+        self.load_snapshot_status = load_snapshot_status
+        self.load_snapshot_tmp_path = load_snapshot_tmp_path
 
         # Stored for worker threads — each creates its own MongoClient
         self._uri = uri
@@ -263,6 +260,10 @@ class GraphGenerationUser(MongoConnection):
 
     def _checkpoint_path(self, batch_id: int, name: str) -> str:
         """Return the base path (without extension) for a checkpoint file."""
+        if self.load_snapshot_status and getattr(self, 'load_snapshot_tmp_path', None):
+            return os.sep.join([
+                self.load_snapshot_tmp_path, str(batch_id), name
+            ])
         return os.sep.join([
             self.output_file_path, self.checkpoint_folder,
             self.id, str(batch_id), name,
@@ -744,14 +745,10 @@ class GraphGenerationUser(MongoConnection):
         Persist intermediate results for one batch to disk.
         The file format (csv / pickle / parquet) is determined by self.file_format.
         """
-        dir_path = os.path.join(
-            self.output_file_path, self.checkpoint_folder,
-            self.id, str(batch_id)
-        )
+        dir_path = os.path.dirname(self._checkpoint_path(batch_id, "dummy"))
         os.makedirs(dir_path, exist_ok=True)
-
         def _base(name):
-            return os.path.join(dir_path, name)
+            return self._checkpoint_path(batch_id, name)
 
         features_rows = [
             [
@@ -788,9 +785,12 @@ class GraphGenerationUser(MongoConnection):
         Merge all batch checkpoints into final output files.
         Resolves mention screen_names to user_ids and injects in-degree counts.
         """
-        checkpoint_dir = os.path.join(
-            self.output_file_path, self.checkpoint_folder, self.id
-        )
+        if self.load_snapshot_status and self.load_snapshot_tmp_path:
+            checkpoint_dir = self.load_snapshot_tmp_path
+        else:
+            checkpoint_dir = os.path.join(
+                self.output_file_path, self.checkpoint_folder, self.id
+            )
         out_dir = os.path.join(self.output_file_path, self.id)
         os.makedirs(out_dir, exist_ok=True)
 
@@ -946,7 +946,7 @@ class GraphGenerationUser(MongoConnection):
         client      = MongoClient(self._uri, **self._mongo_kwargs)
         collection  = client[self._database_name][self._collection_name]
 
-        batch_offset = worker_id * 1_000_000
+        batch_offset = worker_id * 1_000_000 + int(time.time() % 10000) * 1000
         local_batch  = 0
         features_list, edges_rt, edges_reply, mention_raw, screen_names_list = \
             [], [], [], [], []
@@ -1001,6 +1001,23 @@ class GraphGenerationUser(MongoConnection):
 
         return user_count
 
+    def _get_processed_users_from_snapshot(self) -> set:
+        processed_users = set()
+        ext = _ext(self.file_format)
+        if not os.path.exists(self.load_snapshot_tmp_path):
+            return processed_users
+
+        for batch_dir in os.listdir(self.load_snapshot_tmp_path):
+            batch_path = os.sep.join([self.load_snapshot_tmp_path, batch_dir])
+            if not os.path.isdir(batch_path):
+                continue
+            
+            feat_file = os.path.join(batch_path, "user_features" + ext)
+            if os.path.exists(feat_file):
+                for row in Writer.load_checkpoint_file(feat_file):
+                    processed_users.add(int(row[0])) # user_node_id
+        return processed_users
+
     # ─────────────────────────────────────────────────────────────────────────
     # MAIN ENTRY POINT
     # ─────────────────────────────────────────────────────────────────────────
@@ -1012,53 +1029,63 @@ class GraphGenerationUser(MongoConnection):
             f"Run ID: {self.id}  Format: {self.file_format}"
         )
         run_start = time.time()
-
+        
         client = MongoClient(self._uri, **self._mongo_kwargs)
         collection = client[self._database_name][self._collection_name]
         
+        if self.load_snapshot_status and self.load_snapshot_tmp_path:
+            self.logger.info(f"Loading snapshot from {self.load_snapshot_tmp_path} to resume extraction.")
+            processed_users = self._get_processed_users_from_snapshot()
+            self.logger.info(f"Found {len(processed_users)} already processed users in snapshot.")
+            skipped = self.strategy.exclude_users(processed_users)
+            self.logger.info(f"Excluded {skipped} users from strategy processing queue.")
+            snapshot_basename = os.path.basename(self.load_snapshot_tmp_path.rstrip(os.sep))
+            if snapshot_basename:
+                 self.id = snapshot_basename
+            
         work_items = self.strategy.partition_work(collection, n_workers, max_users, self.logger)
         client.close()
 
         if not work_items:
-            self.logger.warning("No work to process.")
-            return
+            self.logger.warning("No work to process. Proceeding to merge (if any).")
+            total_users = 0
+        else:
+            per_worker_max = (
+                (max_users + len(work_items) - 1) // len(work_items)
+                if max_users is not None and len(work_items) > 0 else None
+            )
 
-        per_worker_max = (
-            (max_users + len(work_items) - 1) // len(work_items)
-            if max_users is not None and len(work_items) > 0 else None
-        )
+            self.logger.info(
+                f"Dispatching {len(work_items)} task(s) to {n_workers} thread(s) "
+                f"(checkpoint every {checkpoint_every} users per task)..."
+            )
 
-        self.logger.info(
-            f"Dispatching {len(work_items)} task(s) to {n_workers} thread(s) "
-            f"(checkpoint every {checkpoint_every} users per task)..."
-        )
-
-        total_users = 0
-        _total_users_counter = [0]              # shared mutable counter
-        _total_users_lock    = threading.Lock()
-        with ThreadPoolExecutor(max_workers=n_workers) as executor:
-            futures = {
-                executor.submit(
-                    self._process_work_item,
-                    task_id, work_item,
-                    checkpoint_every, per_worker_max,
-                    _total_users_counter, _total_users_lock,
-                ): task_id
-                for task_id, work_item in enumerate(work_items)
-            }
-            for future in as_completed(futures):
-                worker_id = futures[future]
-                try:
-                    count = future.result()
-                    total_users += count
-                    self.logger.info(
-                        f"[Worker {worker_id}] finished — {count} users processed."
-                    )
-                except Exception as exc:
-                    self.logger.error(
-                        f"[Worker {worker_id}] failed with exception: {exc}",
-                        exc_info=True,
-                    )
+            total_users = 0
+            _total_users_counter = [0]              # shared mutable counter
+            _total_users_lock    = threading.Lock()
+            with ThreadPoolExecutor(max_workers=n_workers) as executor:
+                futures = {
+                    executor.submit(
+                        self._process_work_item,
+                        task_id, work_item,
+                        checkpoint_every, per_worker_max,
+                        _total_users_counter, _total_users_lock,
+                    ): task_id
+                    for task_id, work_item in enumerate(work_items)
+                }
+                for future in as_completed(futures):
+                    worker_id = futures[future]
+                    try:
+                        count = future.result()
+                        total_users += count
+                        self.logger.info(
+                            f"[Worker {worker_id}] finished — {count} users processed."
+                        )
+                    except Exception as exc:
+                        self.logger.error(
+                            f"[Worker {worker_id}] failed with exception: {exc}",
+                            exc_info=True,
+                        )
 
         # ── Step 4: merge all checkpoints into final output ───────────────────
         extraction_elapsed = time.time() - run_start

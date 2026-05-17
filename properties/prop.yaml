@@ -6,7 +6,7 @@ log:
 # Graph Generation Stage
 graph_generation:
   to_execute: true
-  delete_tmp_after_merge: true
+  delete_tmp_after_merge: false
   parameters:
     checkpoint_every: 500
     n_workers: 4
@@ -36,6 +36,9 @@ graph_generation:
       response: false
       mention: false
       user_user: true
+    load_snapshot:
+      status: true
+      tmp_path: "./resources/tmp/48ca37c8507711f1abea9c29764a0d1b"
     output:
       path: "./resources/"
       graph_file_name:
