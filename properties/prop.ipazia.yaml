@@ -6,7 +6,7 @@ graph_generation:
   delete_tmp_after_merge: false
   parameters:
     checkpoint_every: 100
-    n_workers: 4
+    n_workers: 16
     fast_rt_threshold: 60
     is_community: true
     community_file: "/app/resources/communities_rp_0.4.csv"
@@ -34,8 +34,8 @@ graph_generation:
       mention: false
       user_user: true
     load_snapshot:
-      status: false
-      tmp_path: "./resources/tmp/e6fe8cd2513011f188fa08f1eaf4fe18/"
+      status: true
+      tmp_path: "./resources/tmp/8cd290e451f511f182c408f1eaf4fe18  /"
     output:
       path: "/app/resources"
       graph_file_name:
