@@ -6,7 +6,7 @@ graph_generation:
   delete_tmp_after_merge: false
   parameters:
     checkpoint_every: 100
-    n_workers: 16
+    n_workers: 32
     fast_rt_threshold: 60
     is_community: true
     community_file: "/app/resources/communities_rp_0.4.csv"
