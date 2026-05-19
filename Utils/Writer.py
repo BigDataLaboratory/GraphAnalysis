@@ -183,10 +183,12 @@ class Writer:
                         break
             return rows
         elif file_path.endswith('.parquet'):
-            return pd.read_parquet(file_path).values.tolist()
+            df = pd.read_parquet(file_path)
+            return [list(row) for row in df.itertuples(index=False, name=None)]
         elif file_path.endswith('.feather'):
             import pyarrow.feather as feather
-            return feather.read_feather(file_path).values.tolist()
+            df = feather.read_feather(file_path)
+            return [list(row) for row in df.itertuples(index=False, name=None)]
         else:
             with open(file_path, mode='r', newline='', encoding='utf-8',
                       errors='replace') as f:
