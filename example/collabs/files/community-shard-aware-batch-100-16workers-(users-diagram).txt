@@ -1,4 +1,12 @@
-2026-05-17 21:30:28,220 - GraphGenerationUser - INFO - [Worker 0 | Batch 0] 0 users | 0 RT | 0 reply | 0 mention [total: 0 users]
+time="2026-05-17T23:30:19+02:00" level=warning msg="StopSignal SIGTERM failed to stop container graph_analysis in 10 seconds, resorting to SIGKILL"
+graph_analysis
+2026-05-17 21:30:28,220 - __main__ - INFO - Starting GraphAnalysis pipeline
+2026-05-17 21:30:28,242 - GraphGenerationUser - INFO - [GraphGenerationUser] Starting extraction. Run ID: 9fc5dc82523711f1bed408f1eaf4fe18  Format: feather
+2026-05-17 21:30:28,248 - GraphGenerationUser - INFO - Loading snapshot from /app/resources/tmp/8cd290e451f511f182c408f1eaf4fe18/ to resume extraction.
+2026-05-17 21:30:28,947 - GraphGenerationUser - INFO - Found 700 already processed users in snapshot.
+2026-05-17 21:30:28,953 - GraphGenerationUser - INFO - Excluded 700 users from strategy processing queue.
+2026-05-17 21:30:28,960 - GraphGenerationUser - INFO - CommunityAwareShard: 278 communities | 36,699 users | load per worker: [2819, 2288, 2249, 2249, 2288, 2287, 2248, 2248, 2287, 2248, 2248, 2248, 2248, 2248, 2248, 2248]
+2026-05-17 21:30:28,961 - GraphGenerationUser - INFO - Dispatching 16 task(s) to 16 thread(s) (checkpoint every 100 users per task)...
 2026-05-18 03:33:45,691 - GraphGenerationUser - INFO - [Worker 11 | Batch 14429000] 100 users | 27316 RT | 12375 reply | 15978 mention [total: 100 users]
 2026-05-18 04:15:53,003 - GraphGenerationUser - INFO - [Worker 7 | Batch 10429000] 100 users | 51790 RT | 19890 reply | 29842 mention [total: 200 users]
 2026-05-18 04:24:10,933 - GraphGenerationUser - INFO - [Worker 15 | Batch 18429000] 100 users | 24926 RT | 17567 reply | 21813 mention [total: 300 users]
@@ -96,3 +104,4 @@
 2026-05-19 14:33:34,877 - GraphGenerationUser - INFO - [Worker 6 | Batch 9429004] 500 users | 59784 RT | 57336 reply | 68343 mention [total: 9,500 users]
 2026-05-19 14:47:01,867 - GraphGenerationUser - INFO - [Worker 11 | Batch 14429009] 1000 users | 50179 RT | 45086 reply | 60002 mention [total: 9,600 users]
 2026-05-19 14:59:01,578 - GraphGenerationUser - INFO - [Worker 5 | Batch 8429006] 700 users | 78313 RT | 42110 reply | 47161 mention [total: 9,700 users]
+2026-05-19 15:29:25,530 - GraphGenerationUser - INFO - [Worker 1 | Batch 4429004] 500 users | 109307 RT | 63421 reply | 90198 mention [total: 9,800 users]
