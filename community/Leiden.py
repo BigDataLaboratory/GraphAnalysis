@@ -119,7 +119,7 @@ class Leiden:
             edge_list = list(edge_dict.keys())
             weight_list = list(edge_dict.values())
 
-            Gw = ig.Graph(n=g.vcount(), edges=edge_list, directed=True)
+            Gw = ig.Graph(n=g.vcount(), edges=edge_list, directed=g.is_directed())
             for attr in g.vs.attributes():
                 Gw.vs[attr] = list(g.vs[attr])
             Gw.vs["slice"] = [week_str] * Gw.vcount()
@@ -303,6 +303,9 @@ class Leiden:
         tenure_exp_k=0.15,
         memory_decay_half_life_weeks=None,
         memory_decay_threshold=None,
+        decay_mode="exponential",
+        start_slice=0,
+        end_slice=None,
         debug_sample_nodes=None,
         max_edges=None,
         max_slices=None,
@@ -344,10 +347,20 @@ class Leiden:
         current_week_idx = 0
 
         slices_iter = self.iter_weekly_slices(self.data_graph)
+        slice_idx=0
+
+
+        if max_slices is not None:
+            end_slice = start_slice + max_slices - 1
 
         for week_str, G in slices_iter:
-            if max_slices is not None and processed >= max_slices:
+            if slice_idx < start_slice:
+                slice_idx += 1
+                continue
+            if end_slice is not None and slice_idx > end_slice:
+                self.logger.info(f"Raggiunto end_slice={end_slice}, terminando iterazione sulle slice.")
                 break
+            slice_idx += 1
             processed += 1
             dates.append(week_str)
             self._print_memory_usage(f"Prima della slice {week_str}")
@@ -454,8 +467,13 @@ class Leiden:
                             last_week, last_bonus = self._last_together[key]
                             delta = current_week_idx - last_week
                             if delta > 0:
-                                decay = 2.0 ** (-delta / memory_decay_half_life_weeks)
-                                bonus_val = last_bonus * decay
+                                if decay_mode == "exponential":
+                                    decay_factor = 2.0 ** (-delta / memory_decay_half_life_weeks)
+                                elif decay_mode == "linear":
+                                    decay_factor = max(0.0, 1.0 - delta / memory_decay_half_life_weeks)
+                                elif decay_mode == "step":
+                                    decay_factor = 1.0 if delta < memory_decay_half_life_weeks else 0.0
+                                bonus_val = last_bonus * decay_factor
                                 if threshold > 0 and bonus_val < threshold:
                                     bonus_val = 0.0
                                 final_bonus[idx] = bonus_val
@@ -490,6 +508,19 @@ class Leiden:
             # align labels
             if prev_comm_by_name:
                 curr_labels = np.array(self._relabel_with_overlap(prev_comm_by_name, names, curr_labels), dtype=int)
+
+            degrees = np.array(G.degree(mode="all"))
+            for i, n in enumerate(names):
+
+                if degrees[i] == 0:
+
+                    prev_lab = prev_comm_by_name.get(n)
+
+                    if prev_lab is not None:
+                        curr_labels[i] = prev_lab
+
+            
+            
                                 
 
             memberships.append(list(curr_labels))
@@ -501,52 +532,149 @@ class Leiden:
                     writer.writerow([n, str(week_str), int(lab)])
 
             # update tenure + prev labels
+            degrees = np.array(G.degree(mode="all"))
+
             new_prev = {}
             new_ten = {}
-            for n, lab in zip(names, curr_labels):
+
+            for i, (n, lab) in enumerate(zip(names, curr_labels)):
+                is_active = degrees[i] > 0
+
+                if not is_active:
+                    # Opzione A: non incremento la tenure dei nodi inattivi
+                    new_ten[n] = tenure_by_name.get(n, 0)
+                    new_prev[n] = prev_comm_by_name.get(n, int(lab))
+                    continue
+
                 old = prev_comm_by_name.get(n)
                 if old is not None and old == int(lab):
                     new_ten[n] = tenure_by_name.get(n, 0) + 1
                 else:
                     new_ten[n] = 0
+
                 new_prev[n] = int(lab)
 
             prev_comm_by_name = new_prev
             tenure_by_name = new_ten
 
-            if use_decay:
-                ten_curr = np.array([new_ten.get(name, 0) for name in names])
-                comm_to_nodes = {}
-                for idx, comm in enumerate(curr_labels):
-                    node_name = names[idx]
-                    comm_to_nodes.setdefault(comm, []).append((node_name, ten_curr[idx]))
-                for nodes in comm_to_nodes.values():
-                    if len(nodes) > 1:
-                        for i in range(len(nodes)):
-                            name_i, ten_i = nodes[i]
-                            for j in range(i+1, len(nodes)):
-                                name_j, ten_j = nodes[j]
-                                key = tuple(sorted((name_i, name_j)))
-                                # Il bonus si basa sulla tenure minima della coppia (come nel tenure bonus)
-                                tau_pair = min(ten_i, ten_j)
-                                cap_value = float(cap_bonus)
-                                if cap_mode == "dynamic" and dynamic_cap_by_week is not None:
-                                    cap_value = float(dynamic_cap_by_week.get(str(week_str), cap_bonus))
-                                bonus_val = self._tenure_bonus(
-                                    tau=np.array([tau_pair]),
-                                    lambda_temporal=lambda_temporal,
-                                    cap_value=cap_value,
-                                    tenure_mode=tenure_mode,
-                                    tenure_exp_k=tenure_exp_k
-                                )[0]
-                                self._last_together[key] = (current_week_idx, bonus_val)
-            
+            if use_decay and G.ecount() > 0:
+
+                # tenure corrente dei nodi
+                ten_curr = np.array(
+                    [new_ten.get(name, 0) for name in names],
+                    dtype=np.float32
+                )
+
+                # community correnti
+                labels_curr = np.array(curr_labels, dtype=np.int32)
+
+                # archi reali della slice corrente
+                edges = np.asarray(G.get_edgelist(), dtype=np.int32)
+
+                # cap della settimana corrente
+                cap_value = float(cap_bonus)
+
+                if cap_mode == "dynamic" and dynamic_cap_by_week is not None:
+                    cap_value = float(
+                        dynamic_cap_by_week.get(str(week_str), cap_bonus)
+                    )
+
+                # aggiorna memoria SOLO per archi intra-community osservati
+                for u_idx, v_idx in edges:
+
+                    # arco intra-community
+                    if labels_curr[u_idx] != labels_curr[v_idx]:
+                        continue
+
+                    name_u = names[u_idx]
+                    name_v = names[v_idx]
+
+                    key = tuple(sorted((name_u, name_v)))
+
+                    # tenure della coppia
+                    tau_pair = min(
+                        ten_curr[u_idx],
+                        ten_curr[v_idx]
+                    )
+
+                    bonus_val = self._tenure_bonus(
+                        tau=np.array([tau_pair], dtype=np.float32),
+                        lambda_temporal=lambda_temporal,
+                        cap_value=cap_value,
+                        tenure_mode=tenure_mode,
+                        tenure_exp_k=tenure_exp_k
+                    )[0]
+
+                    self._last_together[key] = (
+                        current_week_idx,
+                        float(bonus_val)
+                    )
+            # ==========================================================
+            # PRUNING memoria temporale
+            # ==========================================================
+
+            if use_decay and current_week_idx % 10 == 0:
+
+                threshold = (
+                    memory_decay_threshold
+                    if memory_decay_threshold is not None
+                    else 0.0
+                )
+
+                if threshold > 0:
+
+                    keys_to_delete = []
+
+                    for key, (last_week, last_bonus) in self._last_together.items():
+
+                        delta = current_week_idx - last_week
+
+                        # calcola fattore di decadimento
+                        if decay_mode == "exponential":
+
+                            decay_factor = 2.0 ** (
+                                -delta / memory_decay_half_life_weeks
+                            )
+
+                        elif decay_mode == "linear":
+
+                            decay_factor = max(
+                                0.0,
+                                1.0 - delta / memory_decay_half_life_weeks
+                            )
+
+                        elif decay_mode == "step":
+
+                            decay_factor = (
+                                1.0
+                                if delta < memory_decay_half_life_weeks
+                                else 0.0
+                            )
+
+                        else:
+                            decay_factor = 0.0
+
+                        decayed_bonus = last_bonus * decay_factor
+
+                        # se il bonus è ormai trascurabile -> elimina
+                        if decayed_bonus < threshold:
+                            keys_to_delete.append(key)
+
+                    for key in keys_to_delete:
+                        del self._last_together[key]
+
+                    self.logger.info(
+                        f"[PRUNING] removed={len(keys_to_delete):,} "
+                        f"remaining={len(self._last_together):,}"
+                    )
+
+
             current_week_idx += 1
 
             self._print_memory_usage(f"Dopo la slice {week_str}")
 
         return memberships, dates
-
+  
 
     # Runner per GraphAnalysis: esegue UNA run
 
@@ -567,7 +695,8 @@ class Leiden:
         output_dir,
         run_tag,
         memory_decay_half_life_weeks=None,
-        memory_decay_threshold=None
+        memory_decay_threshold=None,
+        decay_mode="exponential"
     ):
         """
         Esegue la run e salva:
@@ -594,7 +723,7 @@ class Leiden:
                 )
 
 
-        memberships, dates = self.compute_leiden_incremental_progressive(
+        memberships, dates= self.compute_leiden_incremental_progressive(
             method=method,
             resolution_parameter=float(resolution_parameter),
             lambda_temporal=float(lambda_temporal),
@@ -605,6 +734,7 @@ class Leiden:
             tenure_exp_k=float(tenure_exp_k),
             memory_decay_half_life_weeks=memory_decay_half_life_weeks,
             memory_decay_threshold=memory_decay_threshold,
+            decay_mode=decay_mode,
             debug_sample_nodes=debug_sample_nodes,
             max_edges=max_edges,
             max_slices=max_slices,
@@ -760,7 +890,7 @@ class Leiden:
         for (year, week), edge_dict in sorted(weekly_edge_weights.items()):
             edge_list = list(edge_dict.keys())
             weight_list = list(edge_dict.values())
-            Gw = ig.Graph(n=g.vcount(), edges=edge_list, directed=True)
+            Gw = ig.Graph(n=g.vcount(), edges=edge_list, directed=g.is_directed())
             for attr in ("id", "name", "type"):
                 if attr in g.vs.attribute_names():
                     Gw.vs[attr] = list(g.vs[attr])
