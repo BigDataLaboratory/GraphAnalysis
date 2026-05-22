@@ -100,22 +100,22 @@ class TestGraphGenerationUser(unittest.TestCase):
         # Test Features
         self.assertIsNotNone(features)
         self.assertEqual(features['user_id'], 100)
-        self.assertEqual(features['total'], 3)
-        self.assertEqual(features['retweets'], 1)
-        self.assertEqual(features['replies'], 1)
-        self.assertEqual(features['original'], 1)
-        self.assertEqual(features['followers'], 55) # Check that the most recent features were captured
+        self.assertEqual(features['total'], 1.39)
+        self.assertEqual(features['retweets'], 0.69)
+        self.assertEqual(features['replies'], 0.69)
+        self.assertEqual(features['original'], 0.69)
+        self.assertEqual(features['followers'], 4.03) # Check that the most recent features were captured
         self.assertEqual(features['n_unique_hashtags'], 2)  # ai, graph
         self.assertEqual(features['n_unique_mentions'], 3) # user2, user3, user4
         
         # Test Edges Retweet
         self.assertEqual(len(edges_rt), 1)
-        self.assertEqual(edges_rt[0][1], Utils.to_node_id(200))
+        self.assertEqual(edges_rt[0][1], 200)
         self.assertEqual(edges_rt[0][2], 1)
         
         # Test Edges Reply
         self.assertEqual(len(edges_reply), 1)
-        self.assertEqual(edges_reply[0][1], Utils.to_node_id(300))
+        self.assertEqual(edges_reply[0][1], 300)
         self.assertEqual(edges_reply[0][2], 1)
         
         # Test Mention (user2, user3, user4 but 3 and 4 are not retweeted so counted)

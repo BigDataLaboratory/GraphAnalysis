@@ -21,158 +21,20 @@ from Utils.Utils import Utils
 from Utils.Writer import Writer, _ext, SUPPORTED_FORMATS
 from algorithms.MongoConnection import MongoConnection
 
-_HTML_TAG_RE = re.compile(r'<.*?>')
-
-
-
-def tweet_regularity_score_from_timestamps(timestamps):
-    """
-    Computes the regularity of posting intervals using the coefficient of variation (CV)
-    of Inter-Tweet Intervals (ITI = time between consecutive tweets, in seconds).
-
-    CV = std(ITI) / mean(ITI). A perfectly regular poster (bot) has CV ≈ 0 → score ≈ 1.
-    A chaotic poster has high CV → score near 0.
-
-    Requires at least 2 timestamps. O(N log N) due to sort.
-    """
-    if len(timestamps) < 2:
-        return {'regularity_score': 0.0, 'iti_std': 0.0, 'iti_mean': 0.0, 'n_intervals': 0}
-
-    sorted_ts = np.sort(np.array(timestamps, dtype=float))
-    intervals = np.diff(sorted_ts)
-
-    iti_mean = float(intervals.mean())
-    iti_std = float(intervals.std(ddof=0))
-    cv = iti_std / iti_mean if iti_mean > 0 else float('inf')
-    regularity_score = 1.0 / (1.0 + cv)
-
-    return {
-        'regularity_score': float(regularity_score),
-        'iti_std': iti_std,
-        'iti_mean': iti_mean,
-        'n_intervals': len(intervals),
-    }
-
-
-def daily_posting_consistency(timestamps, window_days=90, min_days=7, cv_clip=5.0):
-    """
-    Measures consistency of day-over-day posting volume within a trailing window.
-
-    Uses the CV of log-transformed daily tweet counts. Lower CV = more consistent
-    daily volume. Combined with activity_ratio (fraction of days with any activity)
-    into a single score in [0, 1].
-    """
-    if not timestamps:
-        return {'daily_score': 0.0, 'daily_cv_log': None, 'median_daily_count': 0, 'n_days': 0}
-
-    ts = np.sort(np.array(timestamps, dtype=float))
-    start = int(ts[-1]) - int(window_days) * 86400
-
-    days = [datetime.fromtimestamp(t, tz=timezone.utc).date() for t in ts if t >= start]
-    if not days:
-        return {'daily_score': 0.0, 'daily_cv_log': None, 'median_daily_count': 0, 'n_days': 0}
-
-    day_counts = Counter(days)
-    unique_days = sorted(set(days))
-    n_days = len(unique_days)
-    counts = [day_counts[d] for d in unique_days]
-
-    if n_days < min_days:
-        median_daily = float(np.median(counts)) if counts else 0.0
-        return {'daily_score': 0.0, 'daily_cv_log': None, 'median_daily_count': median_daily, 'n_days': n_days}
-
-    counts_arr = np.array(counts, dtype=float)
-    log_counts = np.log1p(counts_arr)
-    mean_log = float(log_counts.mean())
-    std_log = float(log_counts.std(ddof=0))
-    daily_cv_log = std_log / mean_log if mean_log > 0 else float('inf')
-
-    score_from_cv = max(0.0, 1.0 - min(daily_cv_log, cv_clip) / cv_clip)
-    activity_bonus = min(1.0, (n_days / float(window_days)) * 2.0)
-    daily_score = float(max(0.0, min(1.0, 0.75 * score_from_cv + 0.25 * activity_bonus)))
-
-    return {
-        'daily_score': daily_score,
-        'daily_cv_log': None if not np.isfinite(daily_cv_log) else float(daily_cv_log),
-        'median_daily_count': float(np.median(counts_arr)),
-        'n_days': n_days,
-    }
-
-
-def internal_tweet_density(timestamps, window_days=90):
-    """
-    Measures the spread of posting activity across the 24-hour cycle using
-    Shannon entropy, normalized to [0, 1] by dividing by log2(24).
-
-    H = 1 → perfectly uniform (one tweet per hour, human-like).
-    H = 0 → all tweets at the same hour (bot-like, no sleep pattern).
-    """
-    if not timestamps:
-        return 0.0
-
-    ts = np.array(timestamps, dtype=float)
-    start = float(ts.max()) - int(window_days) * 86400
-    hours = [datetime.fromtimestamp(t, tz=timezone.utc).hour for t in ts if t >= start]
-
-    if len(hours) < 2:
-        return 0.0
-
-    hour_counts = Counter(hours)
-    total_h = len(hours)
-    probs = [c / total_h for c in hour_counts.values()]
-    raw_entropy = -sum(p * math.log2(p) for p in probs if p > 0)
-    return raw_entropy / math.log2(24)
-
-
-def classify_source(src_raw: str) -> str:
-    """
-    Classifies the tweet source into one of: 'mobile', 'web', 'news_manager', 'bot_api'.
-    Categories based on the most frequent sources in the dataset.
-    """
-    if not isinstance(src_raw, str):
-        return 'bot_api'
-
-    m = _HTML_TAG_RE.sub('', src_raw).strip().lower()
-
-    # these values are based on this query: db.collection.distinct('source')
-    MOBILE = ['iphone', 'android', 'ipad', 'mobile', 'twitter for mac']
-    WEB = ['web app', 'web client', 'twitter web']
-    NEWS_MANAGER = [
-        'postpickr', 'hootsuite', 'wordpress', 'blog2social',
-        'dlvr.it', 'dlvrit', 'ifttt', 'instagram'
-    ]
-
-    if any(k in m for k in MOBILE):
-        return 'mobile'
-    if any(k in m for k in WEB):
-        return 'web'
-    if any(k in m for k in NEWS_MANAGER):
-        return 'news_manager'
-    return 'bot_api'  # TweetDeck, API, unknown → bot/api by default
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Column definitions (single source of truth)
-# ─────────────────────────────────────────────────────────────────────────────
-USER_FEATURES_COLUMNS = [
-    'user_node_id', 'total', 'retweets', 'replies', 'original',
-    'likes', 'followers', 'following', 'verified', 'account_date',
-    'listed_count', 'favourites_count', 'reputation_score',
-    'n_unique_hashtags', 'n_unique_mentions',
-    'n_hashtags_total', 'hashtag_entropy',
-    'activation_age', 'tweet_regularity_score', 'regularity_reliable',
-    'tweet_avg_interval_seconds', 'daily_score', 'daily_cv_log',
-    'internal_tweet_density', 'profile_has_url', 'geo_enabled_flag',
-    'sensitive_rate', 'mobile_ratio', 'web_ratio',
-    'news_manager_ratio', 'bot_api_ratio', 'source_entropy', 'community',
-]
-USER_FEATURES_COLUMNS_FINAL = USER_FEATURES_COLUMNS + [
-    'received_retweets', 'received_replies', 'received_mentions',
-]
-EDGE_RETWEET_COLUMNS  = ['src', 'dst', 'weight', 'lifespan', 'fast_rt_ratio', 'rt_cadence', 'rt_temporal_jitter', 'rt_topic_consistency']
-EDGE_REPLY_COLUMNS    = ['src', 'dst', 'weight', 'lifespan', 'avg_reply_latency_seconds', 'reply_regularity', 'reply_burstiness', 'reply_diurnal_sync']
-EDGE_MENTION_COLUMNS  = ['src', 'dst', 'weight', 'mention_lifespan', 'mention_regularity', 'mention_burstiness', 'mention_in_reply_ratio', 'mention_solo_ratio']
-SCREEN_NAME_COLUMNS   = ['screen_name', 'user_id']
+from algorithms.graph.features import (
+    tweet_regularity_score_from_timestamps,
+    daily_posting_consistency,
+    internal_tweet_density,
+    classify_source
+)
+from algorithms.graph.constants import (
+    USER_FEATURES_COLUMNS,
+    USER_FEATURES_COLUMNS_FINAL,
+    EDGE_RETWEET_COLUMNS,
+    EDGE_REPLY_COLUMNS,
+    EDGE_MENTION_COLUMNS,
+    SCREEN_NAME_COLUMNS
+)
 
 
 class GraphGenerationUser(MongoConnection):

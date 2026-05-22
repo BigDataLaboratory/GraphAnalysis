@@ -13,7 +13,7 @@ USER_FEATURES_COLUMNS = [
     'tweet_avg_interval_seconds', 'daily_score', 'daily_cv_log',
     'internal_tweet_density', 'profile_has_url', 'geo_enabled_flag',
     'sensitive_rate', 'mobile_ratio', 'web_ratio',
-    'news_manager_ratio', 'bot_api_ratio', 'source_entropy',
+    'news_manager_ratio', 'bot_api_ratio', 'source_entropy', 'community',
 ]
 
 # Final user features may include received interactions aggregated later
@@ -24,7 +24,7 @@ USER_FEATURES_COLUMNS_FINAL = USER_FEATURES_COLUMNS + [
 # Edge column definitions
 EDGE_RETWEET_COLUMNS = [
     'src', 'dst', 'weight', 'lifespan', 'fast_rt_ratio',
-    'rt_cadence', 'rt_jitter', 'rt_topic_consistency'
+    'rt_cadence', 'rt_temporal_jitter', 'rt_topic_consistency'
 ]
 
 EDGE_REPLY_COLUMNS = [
