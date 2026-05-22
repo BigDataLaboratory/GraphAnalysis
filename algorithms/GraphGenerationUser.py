@@ -1,7 +1,6 @@
-# Legacy compatibility wrapper for GraphGenerationUser
-# Delegates to the fully modularized package under algorithms.graph
-# Keep comments in English as requested.
+# Legacy compatibility wrapper for GraphGenerationUser.
+# All logic lives in algorithms.graph.extraction.
 
-from algorithms.graph.orchestrator import GraphGenerationUser
+from algorithms.graph.extraction import GraphGenerationUser
 
 __all__ = ["GraphGenerationUser"]

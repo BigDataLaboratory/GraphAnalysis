@@ -1,7 +1,6 @@
 # algorithms/graph/__init__.py
-# Export the public API of the graph package.
-# Keep this file minimal: do not place heavy logic here.
+# Public API of the graph extraction package.
 
-from .orchestrator import GraphGenerationUser
+from .extraction import GraphGenerationUser
 
 __all__ = ["GraphGenerationUser"]

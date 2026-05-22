@@ -103,12 +103,13 @@ class Writer:
             except (ValueError, TypeError):
                 pass
         table = pa.Table.from_pandas(df, preserve_index=False)
-        # ParquetWriter doesn't easily support appending in PyArrow.
-        # If rewriting is needed, we should read and rewrite or just overwrite.
         if os.path.exists(path):
             existing = pq.read_table(path)
-            table = pa.concat_tables([existing, table])
-            
+            # promote_options='permissive' allows merging tables whose
+            # columns were downcasted to different int widths (e.g. int8
+            # vs int32) by widening to the common type automatically.
+            table = pa.concat_tables([existing, table],
+                                     promote_options='permissive')
         with pa.OSFile(path, 'wb') as sink:
             with pq.ParquetWriter(sink, table.schema, compression='snappy') as pw:
                 pw.write_table(table)
