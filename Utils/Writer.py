@@ -32,7 +32,13 @@ SUPPORTED_FORMATS = ("csv", "pickle", "parquet", "feather")
 
 def _ext(file_format: str) -> str:
     """Return the file extension for the given format."""
-    return {"csv": ".csv", "pickle": ".pkl", "parquet": ".parquet", "feather": ".feather"}[file_format]
+    fmt = (file_format or "csv").lower()
+    return {
+        "csv": ".csv",
+        "pickle": ".pkl",
+        "parquet": ".parquet",
+        "feather": ".feather"
+    }.get(fmt, "." + fmt)
 
 
 class Writer:
@@ -547,7 +553,7 @@ class Writer:
             self.logger.info(f"Merging graph {i+1}/{len(graphs)}: sg nodes={sg.vcount()}, edges={sg.ecount()}")
             full_g = self._merge_two_igraphs_preserve_time(full_g, sg, temporal=self.temporal_graph)
 
-        self.logger.info(f"Full graph loaded with {full_g.vcount()} vertices and {full_g.ecount()} edges")
+        self.logger.info(f"Full graph loaded with {full_g.vcount()} vertices and {full_g.ecount()}")
         return full_g
 
     @staticmethod
@@ -636,7 +642,6 @@ class Writer:
                 master.es["time"] = all_times
 
         return master
-
 
     def read_csv_files_in_folder_parallel(self, path, chunk_size=100, header=False):
         """
