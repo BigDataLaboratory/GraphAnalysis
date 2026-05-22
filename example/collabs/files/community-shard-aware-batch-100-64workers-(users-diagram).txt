@@ -1,0 +1,181 @@
+2026-05-20 19:50:49,661 - __main__ - INFO - Starting GraphAnalysis pipeline
+2026-05-20 19:50:51,598 - GraphGenerationUser - INFO - [GraphGenerationUser] Starting extraction. Run ID: 34a7b98e548511f1b3bc08f1eaf4fe18  Format: feather
+2026-05-20 19:50:51,605 - GraphGenerationUser - INFO - Loading snapshot from /app/resources/tmp/8cd290e451f511f182c408f1eaf4fe18/ to resume extraction.
+2026-05-20 19:57:32,863 - GraphGenerationUser - INFO - Found 23598 already processed users in snapshot.
+2026-05-20 19:57:32,879 - GraphGenerationUser - INFO - Excluded 23598 users from strategy processing queue.
+2026-05-20 19:57:32,881 - GraphGenerationUser - INFO - CommunityAwareShard: 181 communities | 13,801 users | load per worker: [2419, 746, 634, 248, 203, 192, 160, 160, 168, 162, 160, 160, 160, 159, 165, 164, 168, 160, 172, 159, 170, 170, 170, 169, 169, 168, 167, 166, 166, 165, 164, 164, 164, 164, 163, 161, 161, 160, 159, 159, 158, 158, 158, 158, 158, 157, 157, 157, 158, 158, 158, 158, 158, 158, 158, 158, 157, 158, 158, 157, 157, 157, 157, 157]
+2026-05-20 19:57:32,882 - GraphGenerationUser - INFO - Dispatching 64 task(s) to 64 thread(s) (checkpoint every 100 users per task)...
+2026-05-20 20:40:39,206 - GraphGenerationUser - INFO - [Worker 56 | Batch 63053000] 100 users | 4036 RT | 578 reply | 828 mention [total: 100 users]
+2026-05-20 21:18:44,370 - GraphGenerationUser - INFO - [Worker 12 | Batch 19053000] 100 users | 1831 RT | 441 reply | 2088 mention [total: 200 users]
+2026-05-20 21:34:33,776 - GraphGenerationUser - INFO - [Worker 43 | Batch 50053000] 100 users | 5052 RT | 1293 reply | 4789 mention [total: 300 users]
+2026-05-20 23:16:30,810 - GraphGenerationUser - INFO - [Worker 21 | Batch 28053000] 100 users | 5572 RT | 641 reply | 4786 mention [total: 400 users]
+2026-05-20 23:31:19,386 - GraphGenerationUser - INFO - [Worker 63 | Batch 70053000] 100 users | 4103 RT | 2931 reply | 4115 mention [total: 500 users]
+2026-05-20 23:33:56,614 - GraphGenerationUser - INFO - [Worker 29 | Batch 36053000] 100 users | 14139 RT | 6602 reply | 12292 mention [total: 600 users]
+2026-05-21 00:03:02,048 - GraphGenerationUser - INFO - [Worker 45 | Batch 52053000] 100 users | 3276 RT | 2587 reply | 3182 mention [total: 700 users]
+2026-05-21 00:40:04,190 - GraphGenerationUser - INFO - [Worker 21] finished — 170 users processed.
+2026-05-21 00:56:28,098 - GraphGenerationUser - INFO - [Worker 45] finished — 157 users processed.
+2026-05-21 01:00:15,803 - GraphGenerationUser - INFO - [Worker 28 | Batch 35053000] 100 users | 10666 RT | 14773 reply | 22043 mention [total: 800 users]
+2026-05-21 01:06:05,361 - GraphGenerationUser - INFO - [Worker 33 | Batch 40053000] 100 users | 10320 RT | 5286 reply | 6717 mention [total: 900 users]
+2026-05-21 01:07:13,135 - GraphGenerationUser - INFO - [Worker 36 | Batch 43053000] 100 users | 10749 RT | 8578 reply | 12235 mention [total: 1,000 users]
+2026-05-21 01:09:03,157 - GraphGenerationUser - INFO - [Worker 61 | Batch 68053000] 100 users | 13730 RT | 5563 reply | 9270 mention [total: 1,100 users]
+2026-05-21 01:19:15,980 - GraphGenerationUser - INFO - [Worker 43] finished — 158 users processed.
+2026-05-21 01:25:00,568 - GraphGenerationUser - INFO - [Worker 40 | Batch 47053000] 100 users | 19881 RT | 9868 reply | 13738 mention [total: 1,200 users]
+2026-05-21 01:27:30,842 - GraphGenerationUser - INFO - [Worker 58 | Batch 65053000] 100 users | 7350 RT | 3414 reply | 4470 mention [total: 1,300 users]
+2026-05-21 01:33:22,701 - GraphGenerationUser - INFO - [Worker 46 | Batch 53053000] 100 users | 23233 RT | 16569 reply | 23359 mention [total: 1,400 users]
+2026-05-21 01:42:13,365 - GraphGenerationUser - INFO - [Worker 50 | Batch 57053000] 100 users | 18609 RT | 6249 reply | 10693 mention [total: 1,500 users]
+2026-05-21 01:44:57,873 - GraphGenerationUser - INFO - [Worker 58] finished — 158 users processed.
+2026-05-21 01:53:26,929 - GraphGenerationUser - INFO - [Worker 56] finished — 157 users processed.
+2026-05-21 02:00:44,621 - GraphGenerationUser - INFO - [Worker 10 | Batch 17053000] 100 users | 14291 RT | 10216 reply | 13288 mention [total: 1,600 users]
+2026-05-21 02:07:28,812 - GraphGenerationUser - INFO - [Worker 36] finished — 161 users processed.
+2026-05-21 02:19:20,492 - GraphGenerationUser - INFO - [Worker 47 | Batch 54053000] 100 users | 16039 RT | 7433 reply | 12087 mention [total: 1,700 users]
+2026-05-21 02:20:57,695 - GraphGenerationUser - INFO - [Worker 30 | Batch 37053000] 100 users | 21511 RT | 9687 reply | 17781 mention [total: 1,800 users]
+2026-05-21 02:36:29,101 - GraphGenerationUser - INFO - [Worker 50] finished — 158 users processed.
+2026-05-21 02:40:41,585 - GraphGenerationUser - INFO - [Worker 46] finished — 157 users processed.
+2026-05-21 02:47:46,436 - GraphGenerationUser - INFO - [Worker 34 | Batch 41053000] 100 users | 10608 RT | 9092 reply | 13812 mention [total: 1,900 users]
+2026-05-21 03:08:15,992 - GraphGenerationUser - INFO - [Worker 59 | Batch 66053000] 100 users | 26951 RT | 9277 reply | 13339 mention [total: 2,000 users]
+2026-05-21 03:09:20,296 - GraphGenerationUser - INFO - [Worker 33] finished — 164 users processed.
+2026-05-21 03:13:13,993 - GraphGenerationUser - INFO - [Worker 37 | Batch 44053000] 100 users | 16804 RT | 12872 reply | 25027 mention [total: 2,100 users]
+2026-05-21 03:19:13,982 - GraphGenerationUser - INFO - [Worker 63] finished — 157 users processed.
+2026-05-21 03:22:23,515 - GraphGenerationUser - INFO - [Worker 35 | Batch 42053000] 100 users | 19956 RT | 13436 reply | 18891 mention [total: 2,200 users]
+2026-05-21 03:26:56,737 - GraphGenerationUser - INFO - [Worker 55 | Batch 62053000] 100 users | 29494 RT | 13061 reply | 17566 mention [total: 2,300 users]
+2026-05-21 03:28:24,089 - GraphGenerationUser - INFO - [Worker 47] finished — 157 users processed.
+2026-05-21 03:37:05,317 - GraphGenerationUser - INFO - [Worker 12] finished — 160 users processed.
+2026-05-21 03:51:53,159 - GraphGenerationUser - INFO - [Worker 40] finished — 158 users processed.
+2026-05-21 03:56:39,960 - GraphGenerationUser - INFO - [Worker 31 | Batch 38053000] 100 users | 42707 RT | 8924 reply | 10787 mention [total: 2,400 users]
+2026-05-21 04:12:28,715 - GraphGenerationUser - INFO - [Worker 61] finished — 157 users processed.
+2026-05-21 04:18:45,832 - GraphGenerationUser - INFO - [Worker 6 | Batch 13053000] 100 users | 18651 RT | 3758 reply | 12938 mention [total: 2,500 users]
+2026-05-21 04:23:21,831 - GraphGenerationUser - INFO - [Worker 27 | Batch 34053000] 100 users | 16132 RT | 7055 reply | 10046 mention [total: 2,600 users]
+2026-05-21 04:33:48,091 - GraphGenerationUser - INFO - [Worker 60 | Batch 67053000] 100 users | 9704 RT | 9776 reply | 16041 mention [total: 2,700 users]
+2026-05-21 04:38:22,861 - GraphGenerationUser - INFO - [Worker 32 | Batch 39053000] 100 users | 28441 RT | 19489 reply | 30290 mention [total: 2,800 users]
+2026-05-21 04:41:46,051 - GraphGenerationUser - INFO - [Worker 55] finished — 158 users processed.
+2026-05-21 04:42:33,328 - GraphGenerationUser - INFO - [Worker 62 | Batch 69053000] 100 users | 21325 RT | 5304 reply | 11137 mention [total: 2,900 users]
+2026-05-21 04:45:18,408 - GraphGenerationUser - INFO - [Worker 52 | Batch 59053000] 100 users | 31724 RT | 16496 reply | 23592 mention [total: 3,000 users]
+2026-05-21 04:47:41,380 - GraphGenerationUser - INFO - [Worker 38 | Batch 45053000] 100 users | 19338 RT | 13698 reply | 19715 mention [total: 3,100 users]
+2026-05-21 04:48:53,640 - GraphGenerationUser - INFO - [Worker 44 | Batch 51053000] 100 users | 15874 RT | 14967 reply | 25970 mention [total: 3,200 users]
+2026-05-21 04:54:30,765 - GraphGenerationUser - INFO - [Worker 29] finished — 165 users processed.
+2026-05-21 04:58:32,930 - GraphGenerationUser - INFO - [Worker 54 | Batch 61053000] 100 users | 33749 RT | 18967 reply | 26927 mention [total: 3,300 users]
+2026-05-21 05:01:38,739 - GraphGenerationUser - INFO - [Worker 39 | Batch 46053000] 100 users | 28051 RT | 15770 reply | 21359 mention [total: 3,400 users]
+2026-05-21 05:05:34,202 - GraphGenerationUser - INFO - [Worker 41 | Batch 48053000] 100 users | 16011 RT | 10334 reply | 13483 mention [total: 3,500 users]
+2026-05-21 05:08:13,665 - GraphGenerationUser - INFO - [Worker 35] finished — 161 users processed.
+2026-05-21 05:21:47,169 - GraphGenerationUser - INFO - [Worker 17 | Batch 24053000] 100 users | 28710 RT | 17183 reply | 27463 mention [total: 3,600 users]
+2026-05-21 05:38:02,543 - GraphGenerationUser - INFO - [Worker 62] finished — 157 users processed.
+2026-05-21 05:48:17,084 - GraphGenerationUser - INFO - [Worker 28] finished — 166 users processed.
+2026-05-21 05:58:23,369 - GraphGenerationUser - INFO - [Worker 39] finished — 159 users processed.
+2026-05-21 06:00:47,909 - GraphGenerationUser - INFO - [Worker 24 | Batch 31053000] 100 users | 31904 RT | 10621 reply | 13097 mention [total: 3,700 users]
+2026-05-21 06:02:33,521 - GraphGenerationUser - INFO - [Worker 57 | Batch 64053000] 100 users | 16204 RT | 24284 reply | 32622 mention [total: 3,800 users]
+2026-05-21 06:03:54,536 - GraphGenerationUser - INFO - [Worker 60] finished — 157 users processed.
+2026-05-21 06:06:47,080 - GraphGenerationUser - INFO - [Worker 41] finished — 158 users processed.
+2026-05-21 06:10:35,567 - GraphGenerationUser - INFO - [Worker 51 | Batch 58053000] 100 users | 15774 RT | 9067 reply | 10829 mention [total: 3,900 users]
+2026-05-21 06:13:05,201 - GraphGenerationUser - INFO - [Worker 54] finished — 158 users processed.
+2026-05-21 06:17:58,477 - GraphGenerationUser - INFO - [Worker 6] finished — 160 users processed.
+2026-05-21 06:28:23,106 - GraphGenerationUser - INFO - [Worker 37] finished — 160 users processed.
+2026-05-21 06:29:02,564 - GraphGenerationUser - INFO - [Worker 53 | Batch 60053000] 100 users | 25315 RT | 17588 reply | 24398 mention [total: 4,000 users]
+2026-05-21 06:32:25,713 - GraphGenerationUser - INFO - [Worker 57] finished — 158 users processed.
+2026-05-21 06:35:28,517 - GraphGenerationUser - INFO - [Worker 10] finished — 160 users processed.
+2026-05-21 06:35:35,399 - GraphGenerationUser - INFO - [Worker 49 | Batch 56053000] 100 users | 18145 RT | 34293 reply | 48188 mention [total: 4,100 users]
+2026-05-21 06:44:36,095 - GraphGenerationUser - INFO - [Worker 44] finished — 158 users processed.
+2026-05-21 06:51:00,266 - GraphGenerationUser - INFO - [Worker 25 | Batch 32053000] 100 users | 30005 RT | 15816 reply | 21884 mention [total: 4,200 users]
+2026-05-21 07:03:24,530 - GraphGenerationUser - INFO - [Worker 38] finished — 159 users processed.
+2026-05-21 07:08:29,018 - GraphGenerationUser - INFO - [Worker 22 | Batch 29053000] 100 users | 18792 RT | 4948 reply | 8864 mention [total: 4,300 users]
+2026-05-21 07:12:19,678 - GraphGenerationUser - INFO - [Worker 48 | Batch 55053000] 100 users | 36054 RT | 38660 reply | 61024 mention [total: 4,400 users]
+2026-05-21 07:24:37,085 - GraphGenerationUser - INFO - [Worker 30] finished — 164 users processed.
+2026-05-21 07:26:52,827 - GraphGenerationUser - INFO - [Worker 14 | Batch 21053000] 100 users | 47903 RT | 16774 reply | 27426 mention [total: 4,500 users]
+2026-05-21 07:27:18,635 - GraphGenerationUser - INFO - [Worker 15 | Batch 22053000] 100 users | 60118 RT | 16700 reply | 20439 mention [total: 4,600 users]
+2026-05-21 07:28:41,623 - GraphGenerationUser - INFO - [Worker 51] finished — 158 users processed.
+2026-05-21 07:39:01,987 - GraphGenerationUser - INFO - [Worker 7 | Batch 14053000] 100 users | 38658 RT | 43924 reply | 60308 mention [total: 4,700 users]
+2026-05-21 07:39:41,935 - GraphGenerationUser - INFO - [Worker 34] finished — 163 users processed.
+2026-05-21 07:55:13,942 - GraphGenerationUser - INFO - [Worker 49] finished — 158 users processed.
+2026-05-21 08:07:16,765 - GraphGenerationUser - INFO - [Worker 52] finished — 158 users processed.
+2026-05-21 08:16:05,808 - GraphGenerationUser - INFO - [Worker 24] finished — 169 users processed.
+2026-05-21 08:24:22,893 - GraphGenerationUser - INFO - [Worker 27] finished — 166 users processed.
+2026-05-21 08:34:29,582 - GraphGenerationUser - INFO - [Worker 59] finished — 157 users processed.
+2026-05-21 08:40:15,342 - GraphGenerationUser - INFO - [Worker 32] finished — 164 users processed.
+2026-05-21 08:40:32,323 - GraphGenerationUser - INFO - [Worker 25] finished — 168 users processed.
+2026-05-21 08:42:48,390 - GraphGenerationUser - INFO - [Worker 22] finished — 170 users processed.
+2026-05-21 08:47:08,616 - GraphGenerationUser - INFO - [Worker 31] finished — 164 users processed.
+2026-05-21 08:47:28,876 - GraphGenerationUser - INFO - [Worker 9 | Batch 16053000] 100 users | 12828 RT | 13063 reply | 19996 mention [total: 4,800 users]
+2026-05-21 08:50:04,593 - GraphGenerationUser - INFO - [Worker 14] finished — 165 users processed.
+2026-05-21 08:50:26,934 - GraphGenerationUser - INFO - [Worker 42 | Batch 49053000] 100 users | 43905 RT | 45811 reply | 60191 mention [total: 4,900 users]
+2026-05-21 08:53:40,624 - GraphGenerationUser - INFO - [Worker 15] finished — 164 users processed.
+2026-05-21 08:56:56,352 - GraphGenerationUser - INFO - [Worker 19 | Batch 26053000] 100 users | 33052 RT | 66596 reply | 98712 mention [total: 5,000 users]
+2026-05-21 08:57:08,707 - GraphGenerationUser - INFO - [Worker 48] finished — 158 users processed.
+2026-05-21 09:04:26,484 - GraphGenerationUser - INFO - [Worker 26 | Batch 33053000] 100 users | 21685 RT | 35163 reply | 51453 mention [total: 5,100 users]
+2026-05-21 09:05:56,977 - GraphGenerationUser - INFO - [Worker 7] finished — 160 users processed.
+2026-05-21 09:10:47,373 - GraphGenerationUser - INFO - [Worker 16 | Batch 23053000] 100 users | 14057 RT | 17634 reply | 20742 mention [total: 5,200 users]
+2026-05-21 09:12:23,058 - GraphGenerationUser - INFO - [Worker 8 | Batch 15053000] 100 users | 56537 RT | 16112 reply | 23744 mention [total: 5,300 users]
+2026-05-21 09:15:43,098 - GraphGenerationUser - INFO - [Worker 17] finished — 160 users processed.
+2026-05-21 09:34:56,776 - GraphGenerationUser - INFO - [Worker 8] finished — 168 users processed.
+2026-05-21 09:36:44,235 - GraphGenerationUser - INFO - [Worker 42] finished — 158 users processed.
+2026-05-21 09:39:43,088 - GraphGenerationUser - INFO - [Worker 19] finished — 159 users processed.
+2026-05-21 09:48:05,297 - GraphGenerationUser - INFO - [Worker 20 | Batch 27053000] 100 users | 32225 RT | 78521 reply | 125056 mention [total: 5,400 users]
+2026-05-21 09:54:42,465 - GraphGenerationUser - INFO - [Worker 53] finished — 158 users processed.
+2026-05-21 09:58:25,690 - GraphGenerationUser - INFO - [Worker 9] finished — 162 users processed.
+2026-05-21 09:59:17,971 - GraphGenerationUser - INFO - [Worker 13 | Batch 20053000] 100 users | 35265 RT | 25686 reply | 30785 mention [total: 5,500 users]
+2026-05-21 10:06:54,742 - GraphGenerationUser - INFO - [Worker 18 | Batch 25053000] 100 users | 69241 RT | 28051 reply | 36720 mention [total: 5,600 users]
+2026-05-21 10:08:14,988 - GraphGenerationUser - INFO - [Worker 26] finished — 167 users processed.
+2026-05-21 10:12:06,232 - GraphGenerationUser - INFO - [Worker 11 | Batch 18053000] 100 users | 35834 RT | 90255 reply | 117138 mention [total: 5,700 users]
+2026-05-21 10:12:45,615 - GraphGenerationUser - INFO - [Worker 3 | Batch 10052000] 100 users | 61931 RT | 23705 reply | 31920 mention [total: 5,800 users]
+2026-05-21 10:14:05,424 - GraphGenerationUser - INFO - [Worker 13] finished — 159 users processed.
+2026-05-21 10:23:58,491 - GraphGenerationUser - INFO - [Worker 23 | Batch 30053000] 100 users | 19839 RT | 21719 reply | 33474 mention [total: 5,900 users]
+2026-05-21 10:32:09,820 - GraphGenerationUser - INFO - [Worker 20] finished — 170 users processed.
+2026-05-21 10:38:51,543 - GraphGenerationUser - INFO - [Worker 23] finished — 169 users processed.
+22026-05-21 10:40:32,915 - GraphGenerationUser - INFO - [Worker 4 | Batch 11053000] 100 users | 43538 RT | 26892 reply | 39302 mention [total: 6,000 users]
+2026-05-21 10:46:35,188 - GraphGenerationUser - INFO - [Worker 5 | Batch 12053000] 100 users | 74120 RT | 53801 reply | 76038 mention [total: 6,100 users]
+2026-05-21 11:07:45,424 - GraphGenerationUser - INFO - [Worker 16] finished — 168 users processed.
+2026-05-21 11:19:11,438 - GraphGenerationUser - INFO - [Worker 11] finished — 160 users processed.
+2026-05-21 11:20:41,506 - GraphGenerationUser - INFO - [Worker 18] finished — 172 users processed.
+2026-05-21 11:26:23,399 - GraphGenerationUser - INFO - [Worker 2 | Batch 9053000] 100 users | 142296 RT | 60208 reply | 86782 mention [total: 6,200 users]
+2026-05-21 11:28:51,285 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053000] 100 users | 194742 RT | 60242 reply | 82607 mention [total: 6,300 users]
+2026-05-21 11:52:37,972 - GraphGenerationUser - INFO - [Worker 1 | Batch 8052000] 100 users | 156152 RT | 71095 reply | 99141 mention [total: 6,400 users]
+2026-05-21 12:15:51,795 - GraphGenerationUser - INFO - [Worker 3 | Batch 10052001] 200 users | 48965 RT | 23550 reply | 31894 mention [total: 6,500 users]
+2026-05-21 12:37:54,570 - GraphGenerationUser - INFO - [Worker 4 | Batch 11053001] 200 users | 39959 RT | 26784 reply | 39890 mention [total: 6,600 users]
+2026-05-21 12:40:28,742 - GraphGenerationUser - INFO - [Worker 4] finished — 203 users processed.
+2026-05-21 12:56:00,609 - GraphGenerationUser - INFO - [Worker 5] finished — 192 users processed.
+2026-05-21 13:03:14,105 - GraphGenerationUser - INFO - [Worker 3] finished — 248 users processed.
+2026-05-21 13:29:01,324 - GraphGenerationUser - INFO - [Worker 2 | Batch 9053001] 200 users | 129152 RT | 58013 reply | 83793 mention [total: 6,700 users]
+2026-05-21 13:36:55,648 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053001] 200 users | 181665 RT | 60966 reply | 84165 mention [total: 6,800 users]
+2026-05-21 13:49:56,748 - GraphGenerationUser - INFO - [Worker 1 | Batch 8052001] 200 users | 123916 RT | 62546 reply | 88052 mention [total: 6,900 users]
+2026-05-21 15:17:55,304 - GraphGenerationUser - INFO - [Worker 2 | Batch 9053002] 300 users | 136201 RT | 86312 reply | 117584 mention [total: 7,000 users]
+2026-05-21 15:39:18,748 - GraphGenerationUser - INFO - [Worker 1 | Batch 8052002] 300 users | 158077 RT | 70995 reply | 97166 mention [total: 7,100 users]
+2026-05-21 15:44:56,352 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053002] 300 users | 230996 RT | 59754 reply | 83486 mention [total: 7,200 users]
+2026-05-21 16:53:13,281 - GraphGenerationUser - INFO - [Worker 2 | Batch 9053003] 400 users | 136147 RT | 77546 reply | 107507 mention [total: 7,300 users]
+2026-05-21 17:15:56,247 - GraphGenerationUser - INFO - [Worker 1 | Batch 8052003] 400 users | 128117 RT | 79815 reply | 112955 mention [total: 7,400 users]
+2026-05-21 17:51:18,641 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053003] 400 users | 235341 RT | 67665 reply | 93884 mention [total: 7,500 users]
+2026-05-21 18:25:40,777 - GraphGenerationUser - INFO - [Worker 2 | Batch 9053004] 500 users | 142866 RT | 91279 reply | 125993 mention [total: 7,600 users]
+2026-05-21 18:39:13,420 - GraphGenerationUser - INFO - [Worker 1 | Batch 8052004] 500 users | 111722 RT | 83382 reply | 114661 mention [total: 7,700 users]
+2026-05-21 19:29:40,741 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053004] 500 users | 205965 RT | 60789 reply | 83252 mention [total: 7,800 users]
+2026-05-21 19:58:43,342 - GraphGenerationUser - INFO - [Worker 1 | Batch 8052005] 600 users | 111219 RT | 90512 reply | 123633 mention [total: 7,900 users]
+2026-05-21 19:58:50,930 - GraphGenerationUser - INFO - [Worker 2 | Batch 9053005] 600 users | 161497 RT | 83474 reply | 115007 mention [total: 8,000 users]
+2026-05-21 20:18:55,431 - GraphGenerationUser - INFO - [Worker 2] finished — 634 users processed.
+2026-05-21 20:58:29,331 - GraphGenerationUser - INFO - [Worker 1 | Batch 8052006] 700 users | 114867 RT | 75860 reply | 106253 mention [total: 8,100 users]
+2026-05-21 21:08:27,837 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053005] 600 users | 248034 RT | 64292 reply | 90130 mention [total: 8,200 users]
+2026-05-21 21:23:36,157 - GraphGenerationUser - INFO - [Worker 1] finished — 746 users processed.
+2026-05-21 21:56:13,471 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053006] 700 users | 204088 RT | 67307 reply | 92441 mention [total: 8,300 users]
+2026-05-21 22:36:56,085 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053007] 800 users | 206444 RT | 65862 reply | 103559 mention [total: 8,400 users]
+2026-05-21 23:15:40,787 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053008] 900 users | 188426 RT | 72003 reply | 98626 mention [total: 8,500 users]
+2026-05-21 23:51:13,238 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053009] 1000 users | 195864 RT | 58326 reply | 80317 mention [total: 8,600 users]
+2026-05-22 00:25:34,675 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053010] 1100 users | 200782 RT | 76164 reply | 107011 mention [total: 8,700 users]
+2026-05-22 01:00:27,323 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053011] 1200 users | 167589 RT | 77959 reply | 106464 mention [total: 8,800 users]
+2026-05-22 01:47:16,935 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053012] 1300 users | 222998 RT | 86271 reply | 117061 mention [total: 8,900 users]
+2026-05-22 02:31:59,177 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053013] 1400 users | 208910 RT | 83475 reply | 114626 mention [total: 9,000 users]
+2026-05-22 03:09:52,266 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053014] 1500 users | 193892 RT | 72593 reply | 99451 mention [total: 9,100 users]
+2026-05-22 03:45:07,650 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053015] 1600 users | 180390 RT | 80267 reply | 112102 mention [total: 9,200 users]
+2026-05-22 04:24:24,064 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053016] 1700 users | 178903 RT | 79897 reply | 111520 mention [total: 9,300 users]
+2026-05-22 04:58:48,686 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053017] 1800 users | 184924 RT | 86055 reply | 119211 mention [total: 9,400 users]
+2026-05-22 05:30:45,732 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053018] 1900 users | 181083 RT | 101087 reply | 134213 mention [total: 9,500 users]
+2026-05-22 05:53:47,312 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053019] 2000 users | 184145 RT | 69269 reply | 95151 mention [total: 9,600 users]
+2026-05-22 06:21:40,564 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053020] 2100 users | 188962 RT | 83209 reply | 113114 mention [total: 9,700 users]
+2026-05-22 06:43:02,245 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053021] 2200 users | 170832 RT | 73253 reply | 99659 mention [total: 9,800 users]
+2026-05-22 07:05:50,755 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053022] 2300 users | 195361 RT | 78079 reply | 106710 mention [total: 9,900 users]
+2026-05-22 07:25:37,541 - GraphGenerationUser - INFO - [Worker 0 | Batch 7053023] 2400 users | 157066 RT | 81079 reply | 108615 mention [total: 10,000 users]
+2026-05-22 07:30:37,587 - GraphGenerationUser - INFO - [Worker 0] finished — 2419 users processed.
+2026-05-22 07:30:37,645 - GraphGenerationUser - INFO - 13801 users processed in total in 35:39:46. Starting merge (checkpoints: feather -> final: parquet)...
+2026-05-22 07:30:37,646 - GraphGenerationUser - INFO - Merging checkpoints...
+2026-05-22 07:30:37,646 - GraphGenerationUser - INFO - Building screen_name map...
+2026-05-22 07:30:42,345 - GraphGenerationUser - INFO - Filtering and resolving edges...
+2026-05-22 07:34:52,586 - GraphGenerationUser - INFO - Merge complete. Output in /app/resources/8cd290e451f511f182c408f1eaf4fe18
+  Mentions : 5721846 resolved, 8681827 dropped.
+  Retweets : 10004424 kept, 10731852 dropped.
+  Replies  : 4542519 kept, 5905543 dropped.
+2026-05-22 07:34:56,883 - GraphGenerationUser - INFO - Extraction complete.
+2026-05-22 07:34:56,886 - GraphAnalysis - INFO - Skipping typed-edge GraphGeneration: no graph type enabled.

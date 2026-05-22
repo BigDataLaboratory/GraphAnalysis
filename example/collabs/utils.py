@@ -69,17 +69,21 @@ def human_format(num, pos=None):
 
 def plot_extraction_dashboard(path, batch_label):
     raw_string = read_file(path)
-    pattern = re.compile(r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}),\d+\s+-\s+GraphGenerationUser\s+-\s+INFO\s+-\s+\[Worker\s+(\d+).*?\]\s+(\d+)\s+users')
+    pattern_a = re.compile(r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}),\d+\s+-\s+GraphGenerationUser\s+-\s+INFO\s+-\s+\[Worker\s+(\d+).*?\]\s+([\d,]+)\s+users')
+    pattern_b = re.compile(r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}),\d+\s+-\s+GraphGenerationUser\s+-\s+INFO\s+-\s+\[Worker\s+(\d+)\]\s+finished\s+\D+\s+([\d,]+)\s+users\s+processed')
 
     worker_last_value = {} # Store the last value seen per worker
     data = []
 
     for line in io.StringIO(raw_string):
-        match = pattern.search(line)
+        match = pattern_a.search(line)
+        if not match:
+            match = pattern_b.search(line)
+            
         if match:
             time = match.group(1)
             worker_id = match.group(2)
-            current_total_for_worker = int(match.group(3))
+            current_total_for_worker = int(match.group(3).replace(',', ''))
 
             # Calculate the actual progress (the "delta")
             last_value = worker_last_value.get(worker_id, 0)
@@ -137,6 +141,178 @@ def plot_extraction_dashboard(path, batch_label):
     # Summary Print
     print(f"Summary for {batch_label}: {df['cumulative'].iloc[-1]:,} users in {len(df)} batches.")
     print("-" * 100)
+
+def plot_extraction_comparison(runs, title="User Extraction Comparison Dashboard", max_minutes=500):
+    """
+    Plots a comparison dashboard for multiple user extraction runs.
+    Accepts runs as a list of dicts: [{"path": "...", "label": "..."}, ...]
+    And a custom title for the figures.
+    """
+    parsed_runs = []
+    
+    # Matches: [Worker X | Batch Y] Z users
+    pattern_a = re.compile(
+        r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}),\d+\s+-\s+GraphGenerationUser\s+-\s+INFO\s+-\s+\[Worker\s+(\d+).*?\]\s+([\d,]+)\s+users'
+    )
+    # Matches: [Worker X] finished — Z users processed.
+    pattern_b = re.compile(
+        r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}),\d+\s+-\s+GraphGenerationUser\s+-\s+INFO\s+-\s+\[Worker\s+(\d+)\]\s+finished\s+\D+\s+([\d,]+)\s+users\s+processed'
+    )
+    
+    for run in runs:
+        path = run.get("path")
+        label = run.get("label", path)
+        
+        try:
+            if os.path.isabs(path) or os.path.dirname(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    raw_string = f.read()
+            else:
+                raw_string = read_file(path)
+        except Exception as e:
+            print(f"Error reading file '{path}': {e}")
+            continue
+
+        worker_last_value = {}
+        data = []
+
+        for line in io.StringIO(raw_string):
+            match = pattern_a.search(line)
+            if not match:
+                match = pattern_b.search(line)
+                
+            if match:
+                time_str = match.group(1)
+                worker_id = match.group(2)
+                current_total_for_worker = int(match.group(3).replace(',', ''))
+
+                last_value = worker_last_value.get(worker_id, 0)
+                delta = current_total_for_worker - last_value
+
+                if delta > 0 or len(data) == 0:
+                    data.append({
+                        'time': time_str,
+                        'worker': f"W{worker_id}",
+                        'count': delta
+                    })
+                    worker_last_value[worker_id] = current_total_for_worker
+
+        if not data:
+            print(f"Warning: No valid user extraction log records found in '{path}'.")
+            continue
+
+        df = pd.DataFrame(data)
+        df['time'] = pd.to_datetime(df['time'], format='%Y-%m-%d %H:%M:%S')
+        df = df.sort_values('time')
+        df['cumulative'] = df['count'].cumsum()
+        
+        parsed_runs.append({
+            "label": label,
+            "df": df
+        })
+
+    if not parsed_runs:
+        print("Error: No valid runs could be parsed for comparison.")
+        return
+
+    # Setup Figure (1 row, 2 columns)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 7))
+    fig.suptitle(title, fontsize=16, fontweight='bold', y=0.98)
+    plt.subplots_adjust(wspace=0.25)
+    
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#17becf']
+    formatter = FuncFormatter(human_format)
+
+    comparison_metrics = []
+
+    # --- LEFT GRAPH: Cumulative Comparison over Elapsed Time ---
+    for idx, run_data in enumerate(parsed_runs):
+        df = run_data["df"]
+        label = run_data["label"]
+        color = colors[idx % len(colors)]
+
+        # Calculate relative time from start in minutes
+        t_start = df['time'].iloc[0]
+        df['elapsed_minutes'] = (df['time'] - t_start).dt.total_seconds() / 60.0
+
+        # Truncate if requested
+        if max_minutes is not None:
+            df = df[df['elapsed_minutes'] <= max_minutes].copy()
+            if df.empty:
+                print(f"Warning: No data for run '{label}' under {max_minutes} minutes.")
+                continue
+
+        # Plot line
+        ax1.plot(
+            df['elapsed_minutes'],
+            df['cumulative'],
+            color=color,
+            linewidth=3,
+            label=label
+        )
+        
+        # Calculate speed metrics
+        total_users = df['cumulative'].iloc[-1]
+        total_time_min = df['elapsed_minutes'].iloc[-1]
+        speed = total_users / total_time_min if total_time_min > 0 else 0
+        
+        comparison_metrics.append({
+            "label": label,
+            "total_users": total_users,
+            "total_time_min": total_time_min,
+            "speed": speed,
+            "color": color
+        })
+
+    ax1.set_title("Cumulative Users Extracted vs. Elapsed Time", fontsize=14, fontweight='bold')
+    ax1.set_xlabel("Elapsed Time (Minutes)")
+    ax1.set_ylabel("Total Users")
+    ax1.yaxis.set_major_formatter(formatter)
+    ax1.grid(True, linestyle='--', alpha=0.6)
+    ax1.legend(loc="upper left")
+
+    # --- RIGHT GRAPH: Average Extraction Throughput ---
+    metric_df = pd.DataFrame(comparison_metrics)
+    
+    bars = ax2.bar(
+        metric_df['label'],
+        metric_df['speed'],
+        color=metric_df['color'],
+        edgecolor='black',
+        width=0.4
+    )
+    
+    ax2.set_title("Overall Throughput Comparison: Average Users / Minute", fontsize=14, fontweight='bold')
+    ax2.set_xlabel("Configuration")
+    ax2.set_ylabel("Extraction Speed (Users / Minute)")
+    ax2.yaxis.set_major_formatter(formatter)
+    ax2.grid(True, linestyle='--', alpha=0.6)
+    
+    # Add labels on top of bars
+    for bar in bars:
+        h = bar.get_height()
+        ax2.text(
+            bar.get_x() + bar.get_width()/2,
+            h,
+            f"{h:.1f}/min",
+            ha='center',
+            va='bottom',
+            fontsize=10,
+            fontweight='semibold'
+        )
+
+    plt.show()
+
+    # Print summary text table
+    print("=" * 90)
+    print(f"📊 EXTRACTION COMPARISON REPORT: {title.upper()}")
+    print("=" * 90)
+    print(f"{'Run / Configuration':<40} | {'Users':<10} | {'Duration (min)':<15} | {'Speed (Users/min)':<18}")
+    print("-" * 90)
+    for m in comparison_metrics:
+        duration_str = f"{int(m['total_time_min'])}m {int((m['total_time_min'] % 1) * 60)}s"
+        print(f"{m['label']:<40} | {m['total_users']:<10,} | {duration_str:<15} | {m['speed']:<18.2f}")
+    print("-" * 90)
 
 def plot_community_distribution(csv_path):
     """

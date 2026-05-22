@@ -59,7 +59,7 @@ community_detection:
       - "/app/resources/output_graph_analysis/feb-oct_week_2022/6500962c9d1611f0948408f1eaf4fe18/retweet"
     pickle_graph_file_path: "/dev/shm/feb_oct_2022"
   leiden:
-    to_execute: true
+    to_execute: false
     parameters:
       community_output_file_path: "/app/resources/output_graph_analysis/communities_leiden/temporal/feb_oct_weekly_2022/retweet"
   combo:

@@ -1,5 +1,7 @@
+2026-05-15 18:30:01,415 - __main__ - INFO - Starting GraphAnalysis pipeline
+2026-05-15 18:30:01,482 - GraphGenerationUser - INFO - [GraphGenerationUser] Starting extraction. Run ID: 15b1f794508c11f195b308f1eaf4fe18  Format: feather
+2026-05-15 18:30:01,492 - GraphGenerationUser - INFO - CommunityAwareShard: 278 communities | 37,399 users | load per worker: [2919, 2298, 2306, 2308, 2281, 2320, 2308, 2308, 2307, 2283, 2282, 2320, 2319, 2280, 2280, 2280]
 2026-05-15 18:30:01,492 - GraphGenerationUser - INFO - [Worker 11 | Batch 11000000] 0 users | 0 RT | 0 reply | 0 mention [total: 0 users]
-2026-05-15 18:49:12,853 - GraphGenerationUser - INFO - [Worker 11 | Batch 11000000] 10 users | 3371 RT | 1546 reply | 2140 mention [total: 10 users]
 2026-05-15 19:03:50,106 - GraphGenerationUser - INFO - [Worker 9 | Batch 9000000] 10 users | 1969 RT | 5433 reply | 7123 mention [total: 20 users]
 2026-05-15 19:04:58,638 - GraphGenerationUser - INFO - [Worker 7 | Batch 7000000] 10 users | 3179 RT | 3384 reply | 4501 mention [total: 30 users]
 2026-05-15 19:05:40,454 - GraphGenerationUser - INFO - [Worker 4 | Batch 4000000] 10 users | 3487 RT | 2214 reply | 3584 mention [total: 40 users]
@@ -57,3 +59,5 @@
 2026-05-15 22:24:23,210 - GraphGenerationUser - INFO - [Worker 9 | Batch 9000003] 40 users | 6104 RT | 3271 reply | 4259 mention [total: 560 users]
 2026-05-15 22:28:50,952 - GraphGenerationUser - INFO - [Worker 5 | Batch 5000002] 30 users | 11285 RT | 3431 reply | 4397 mention [total: 570 users]
 2026-05-15 22:28:52,399 - GraphGenerationUser - INFO - [Worker 11 | Batch 11000005] 60 users | 4199 RT | 858 reply | 1133 mention [total: 580 users]
+2026-05-15 22:44:47,910 - GraphGenerationUser - INFO - [Worker 4 | Batch 4000004] 50 users | 4366 RT | 1292 reply | 3460 mention [total: 590 users]
+2026-05-15 22:45:55,867 - GraphGenerationUser - INFO - [Worker 14 | Batch 14000004] 50 users | 8307 RT | 1378 reply | 1679 mention [total: 600 users]
