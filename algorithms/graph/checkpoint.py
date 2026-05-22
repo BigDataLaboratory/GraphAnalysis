@@ -224,6 +224,17 @@ def merge_checkpoints(output_root: str, checkpoint_folder: str, run_id: str,
         row.append(received_replies.get(uid, 0))
         row.append(received_mentions.get(uid, 0))
 
+    # ── Clean up pre-existing final files to prevent duplicates ─────────
+    final_ext = ".csv" if final_file_format == "csv" else _ext(final_file_format)
+    for name in ["user_features", "edges_retweet", "edges_reply", "edges_mention", "screen_name_map"]:
+        fpath = os.path.join(out_dir, name + final_ext)
+        if os.path.exists(fpath):
+            try:
+                os.remove(fpath)
+            except Exception as e:
+                if logger:
+                    logger.warning(f"Could not remove pre-existing final file {fpath}: {e}")
+
     # ── Write final files ────────────────────────────────────────────────
     def _out(name: str) -> str:
         return os.path.join(out_dir, name)
