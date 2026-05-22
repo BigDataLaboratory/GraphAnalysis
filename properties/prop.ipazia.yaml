@@ -8,10 +8,11 @@ graph_generation:
     checkpoint_every: 100
     n_workers: 64
     fast_rt_threshold: 60
-    is_community: true
-    community_file: "/app/resources/communities_rp_0.4.csv"
-    community_strategy: "shard"   # "batch" | "shard" | "linear"
-    community_batch_size: 100
+    community:
+      is_community: true
+      community_file: "/app/resources/communities_rp_0.4.csv"
+      community_strategy: "shard"   # "batch" | "shard" | "linear"
+      community_batch_size: 100
     input:
       type: "json"
       conf:

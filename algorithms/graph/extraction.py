@@ -386,6 +386,21 @@ class GraphGenerationUser(MongoConnection):
 
     def run(self, checkpoint_every: int = 500,
             max_users: Optional[int] = None, n_workers: int = 4) -> None:
+        if self.load_snapshot_status and self.load_snapshot_tmp_path:
+            snapshot_basename = os.path.basename(
+                self.load_snapshot_tmp_path.rstrip(os.sep))
+            if snapshot_basename:
+                self.id = snapshot_basename
+
+        # Check if already complete
+        final_dir = os.path.join(self.output_file_path, self.id)
+        metadata_file = os.path.join(final_dir, "metadata.json")
+        if self.load_snapshot_status and os.path.exists(metadata_file):
+            self.logger.info(
+                f"Final output metadata.json found at '{metadata_file}'. "
+                "Extraction and merge have already completed for this snapshot. Skipping.")
+            return
+
         self.logger.info(
             f"[GraphGenerationUser] Starting extraction. "
             f"Run ID: {self.id}  Format: {self.file_format}")
@@ -405,10 +420,6 @@ class GraphGenerationUser(MongoConnection):
             skipped = self.strategy.exclude_users(processed)
             self.logger.info(
                 f"Excluded {skipped} users from strategy processing queue.")
-            snapshot_basename = os.path.basename(
-                self.load_snapshot_tmp_path.rstrip(os.sep))
-            if snapshot_basename:
-                self.id = snapshot_basename
 
         work_items = self.strategy.partition_work(
             collection, n_workers, max_users, self.logger)

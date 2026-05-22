@@ -76,15 +76,16 @@ class GraphAnalysis:
         final_fmt = out.final_file_format
 
         if gt.user_user:
-            if getattr(p, "is_community", False) and getattr(p, "community_file", ""):
-                df = pd.read_csv(p.community_file)
+            comm_cfg = getattr(p, "community", None)
+            if comm_cfg and getattr(comm_cfg, "is_community", False) and getattr(comm_cfg, "community_file", ""):
+                df = pd.read_csv(comm_cfg.community_file)
                 user_community_map = dict(
                     zip(df["user_id"].astype(int), df["community"].astype(int))
                 )
 
                 # ── automatical selection of strategy ──────────────────────────
-                strategy_name = getattr(p, "community_strategy")
-                batch_size = getattr(p, "community_batch_size")
+                strategy_name = getattr(comm_cfg, "community_strategy")
+                batch_size = getattr(comm_cfg, "community_batch_size")
 
                 if strategy_name == "batch":
                     strategy = CommunityUserBatchStrategy(user_community_map)
@@ -113,7 +114,7 @@ class GraphAnalysis:
                 fast_rt_threshold=p.fast_rt_threshold,
                 strategy=strategy,
                 is_community_run=is_comm,
-                community_file_path=getattr(p, "community_file", None) if is_comm else None,
+                community_file_path=getattr(comm_cfg, "community_file", None) if is_comm else None,
                 load_snapshot_status=p.load_snapshot.status if p.load_snapshot else False,
                 load_snapshot_tmp_path=p.load_snapshot.tmp_path if p.load_snapshot else ""
             )

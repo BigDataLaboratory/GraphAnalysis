@@ -11,10 +11,11 @@ graph_generation:
     checkpoint_every: 100
     n_workers: 8
     fast_rt_threshold: 60
-    is_community: true
-    community_file: "./resources/communities_rp_0.4.csv"
-    community_strategy: "shard"   # "batch" | "shard" | "linear"
-    community_batch_size: 100
+    community:
+      is_community: true
+      community_file: "./resources/communities_rp_0.4.csv"
+      community_strategy: "shard"   # "batch" | "shard" | "linear"
+      community_batch_size: 100
     input:
       type: "json"
       conf:
@@ -38,7 +39,7 @@ graph_generation:
       user_user: true
     load_snapshot:
       status: true
-      tmp_path: "./resources/tmp/48ca37c8507711f1abea9c29764a0d1b"
+      tmp_path: "./resources/tmp/9e5ab1a1507f11f1b8329c29764a0d1b"
     output:
       path: "./resources/"
       graph_file_name:
