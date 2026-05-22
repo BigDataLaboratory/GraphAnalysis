@@ -2,6 +2,6 @@
 # Export the public API of the graph package.
 # Keep this file minimal: do not place heavy logic here.
 
-from .core import GraphGenerationUser
+from .orchestrator import GraphGenerationUser
 
 __all__ = ["GraphGenerationUser"]
