@@ -4,12 +4,12 @@ on:
   push:
     branches:
       - 'exp/*'
-  workflow_dispatch:
-    inputs:
-      prop_file_name:
-        description: 'Property file name (e.g., prop.yaml, prop_ipazia.yaml)'
-        required: true
-        default: 'prop.ipazia.yaml'
+
+env:
+  PROP_FILE: 'prop.ipazia.yaml'
+  MONGO_URI: ${{ vars.MONGO_URI }}
+  MONGO_USERNAME: ${{ secrets.MONGO_USERNAME }}
+  MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
 
 jobs:
   extract:
@@ -28,22 +28,19 @@ jobs:
 
       - name: Prepare Host Directories
         run: |
-          mkdir -p /ipazianas/pasquini/extraction/outputs
-          mkdir -p /ipazianas/pasquini/extraction/logs
+          mkdir -p ${{ vars.IPAZIA_WORK_DIR }}/extraction/outputs
+          mkdir -p ${{ vars.IPAZIA_WORK_DIR }}/extraction/logs
 
       - name: Run Extraction Container
         run: |
-          # Select the prop file to use (dispatch input or 'prop.yaml' fallback for pushes)
-          PROP_FILE="${{ github.event.inputs.prop_file_name || 'prop.ipazia.yaml' }}"
-          
           # Mount the selected configuration file into the container
           podman run --replace \
             --name graph_analysis \
             --network host \
-            -v /ipazianas/pasquini/extraction/outputs:/app/resources \
-            -v /ipazianas/pasquini/extraction/logs:/app/logs \
-            -v "${{ github.workspace }}/properties/${PROP_FILE}":/app/properties/prop.yaml:ro \
-            -e MONGO_URI="${{ vars.MONGO_URI }}" \
-            -e MONGO_USERNAME="${{ secrets.MONGO_USERNAME }}" \
-            -e MONGO_PASSWORD="${{ secrets.MONGO_PASSWORD }}" \
+            -v ${{ vars.IPAZIA_WORK_DIR }}/extraction/outputs:/app/resources \
+            -v ${{ vars.IPAZIA_WORK_DIR }}/extraction/logs:/app/logs \
+            -v "${{ github.workspace }}/properties/${{ env.PROP_FILE }}":/app/properties/prop.yaml:ro \
+            -e MONGO_URI \
+            -e MONGO_USERNAME \
+            -e MONGO_PASSWORD \
             graph-analysis --properties /app/properties/prop.yaml
