@@ -37,7 +37,6 @@ podman run \
   -e MONGO_URI="mongodb://host.containers.internal:27017" \
   -v ./resources:/app/resources \
   -v ./logs:/app/logs \
-  -v ./properties:/app/properties \
   graph-analysis
 ```
 
