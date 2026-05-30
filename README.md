@@ -48,3 +48,23 @@ podman run \
   -v /ipazianas/pasquini/extraction/logs:/app/logs \
   graph-analysis
 ```
+
+```mermaid
+graph TD
+    A[Start: Main.py] --> B{Metadata exists?};
+    B -- Yes --> C[Skip Run: Already Complete];
+    B -- No --> D[1. Connect to MongoDB];
+    D --> E{Load snapshot enabled?};
+    E -- Yes --> F[2. Load Snapshot & Exclude Users];
+    E -- No --> G[3. Partition workload based on Strategy];
+    F --> G;
+    G --> H[4. Dispatch Batches across Worker Threads];
+    H --> I[5. Process User Tweets in Parallel];
+    I --> J{Periodic checkpoint reached?};
+    J -- Yes --> K[Write temp files to disk];
+    J -- No --> L{All users processed?};
+    K --> L;
+    L -- No --> I;
+    L -- Yes --> M[6. Finalize Run & Merge Checkpoints];
+    M --> N[End: Clean up tmp files];
+```

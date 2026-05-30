@@ -12,7 +12,7 @@ graph_generation:
     n_workers: 8
     fast_rt_threshold: 60
     community:
-      is_community: true
+      is_community: false
       community_file: "./resources/communities_rp_0.4.csv"
       community_strategy: "shard"   # "batch" | "shard" | "linear"
       community_batch_size: 100
@@ -38,8 +38,8 @@ graph_generation:
       mention: false
       user_user: true
     load_snapshot:
-      status: true
-      tmp_path: "./resources/tmp/9e5ab1a1507f11f1b8329c29764a0d1b"
+      status: false
+      tmp_path: "./resources/tmp/24074ea04eb411f191869c29764a0d1b"
     output:
       path: "./resources/"
       graph_file_name:
