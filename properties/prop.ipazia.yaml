@@ -5,11 +5,11 @@ graph_generation:
   to_execute: true
   delete_tmp_after_merge: false
   parameters:
-    checkpoint_every: 100
+    checkpoint_every: 10
     n_workers: 32
     fast_rt_threshold: 60
     community:
-      is_community: true
+      is_community: false
       community_file: "/app/resources/communities_rp_0.4.csv"
       community_strategy: "shard"   # "batch" | "shard" | "linear"
       community_batch_size: 100
@@ -36,7 +36,7 @@ graph_generation:
       user_user: true
     load_snapshot:
       status: false
-      tmp_path: "/app/resources/tmp/8cd290e451f511f182c408f1eaf4fe18/"
+      tmp_path: "."
     output:
       path: "/app/resources"
       graph_file_name:
