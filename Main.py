@@ -52,6 +52,7 @@ if __name__ == '__main__':
     do_community_detection_leiden = prop["community_detection"]["leiden"]["to_execute"]
     do_community_detection_combo = prop["community_detection"]["combo"]["to_execute"]
     do_community_hierarchical = prop["community_detection"]["hierarchical"]["to_execute"]
+    do_community_detection_edge_betweenness = prop["community_detection"]["edge_betweenness"]["to_execute"]
     do_get_text = prop["get_users_text"]["to_execute"]
     do_topic_builder = prop["topic_builder"]["to_execute"]
 
@@ -94,6 +95,7 @@ if __name__ == '__main__':
     community_combo_prop = prop["community_detection"]["combo"]["parameters"]
     community_leiden_prop = prop["community_detection"]["leiden"]["parameters"]
     community_hierarchical_prop = prop["community_detection"]["hierarchical"]["parameters"]
+    community_eb_prop = prop["community_detection"]["edge_betweenness"]["parameters"]
 
     users_text_config = prop["get_users_text"]["parameters"]
     community_indexes = users_text_config["communities"]["indexes"]
@@ -181,7 +183,9 @@ if __name__ == '__main__':
         "topics_file_path",
         "docs_file_path",
         "model_path",
-        "model_serialization"
+        "model_serialization",
+        "do_community_detection_edge_betweenness",
+        "community_eb_prop"
     ])
 
     P = Parameters(do_graph_generation,
@@ -242,7 +246,9 @@ if __name__ == '__main__':
                    topics_file_path,
                    docs_file_path,
                    model_path,
-                   model_serialization
+                   model_serialization,
+                   do_community_detection_edge_betweenness,
+                   community_eb_prop
                    )
     graph_analysis = GraphAnalysis(P)
     try:
