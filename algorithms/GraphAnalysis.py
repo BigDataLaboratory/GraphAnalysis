@@ -9,6 +9,7 @@ from algorithms.CommunityText import CommunityText
 from algorithms.GraphGeneration import GraphGeneration
 from community.Combo import Combo
 from community.Leiden import Leiden
+from community.EdgeBetweenness import EdgeBetweenness
 
 
 class GraphAnalysis:
