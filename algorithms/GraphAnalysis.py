@@ -77,9 +77,9 @@ class GraphAnalysis:
             gg.query_data_in_chunks(w, s, method=self.parameters.source_method)
 
         # Community detection
-        community_detection = self.parameters.do_community_detection_combo or self.parameters.do_community_detection_leiden or self.parameters.do_community_hierarchical
+        community_detection = self.parameters.do_community_detection_combo or self.parameters.do_community_detection_leiden or self.parameters.do_community_hierarchical or self.parameters.do_community_detection_edge_betweenness
         if community_detection:
-            if self.parameters.do_community_detection_leiden or self.parameters.do_community_hierarchical:
+            if self.parameters.do_community_detection_leiden or self.parameters.do_community_hierarchical or self.parameters.do_community_detection_edge_betweenness:
                 w = Writer('igraph', self.parameters.temporal)
             elif self.parameters.do_community_detection_combo:
                 w = Writer('nx')
